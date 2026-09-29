@@ -1,6 +1,5 @@
 package com.goldai.app.data;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -11,7 +10,7 @@ import java.net.URL;
 public class XausProvider implements MarketDataProvider {
 
     private static final String API_URL =
-            "https://api.goldprice.dev/v1/prices?symbol=XAU-USD-SPOT";
+            "https://api.gold-api.com/price/XAU";
 
     @Override
     public void getLatestData(Callback callback) {
@@ -22,22 +21,34 @@ public class XausProvider implements MarketDataProvider {
 
             try {
 
-                URL url = new URL(API_URL);
+                URL url =
+                        new URL(API_URL);
 
                 connection =
-                        (HttpURLConnection) url.openConnection();
+                        (HttpURLConnection)
+                                url.openConnection();
 
                 connection.setRequestMethod("GET");
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(15000);
+
+                connection.setConnectTimeout(10000);
+
+                connection.setReadTimeout(10000);
+
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
 
                 int responseCode =
                         connection.getResponseCode();
 
                 if (responseCode != 200) {
+
                     callback.onError(
-                            "خطأ من المصدر: " + responseCode
+                            "خطأ من مصدر الذهب: "
+                                    + responseCode
                     );
+
                     return;
                 }
 
@@ -54,22 +65,19 @@ public class XausProvider implements MarketDataProvider {
                 String line;
 
                 while ((line = reader.readLine()) != null) {
+
                     result.append(line);
                 }
 
                 reader.close();
 
                 JSONObject root =
-                        new JSONObject(result.toString());
-
-                JSONArray symbols =
-                        root.getJSONArray("symbols");
-
-                JSONObject gold =
-                        symbols.getJSONObject(0);
+                        new JSONObject(
+                                result.toString()
+                        );
 
                 double goldUsd =
-                        gold.getDouble("price");
+                        root.getDouble("price");
 
                 MarketData data =
                         new MarketData(
@@ -86,12 +94,14 @@ public class XausProvider implements MarketDataProvider {
             } catch (Exception e) {
 
                 callback.onError(
-                        "فشل الاتصال: " + e.getMessage()
+                        "فشل الاتصال بالذهب: "
+                                + e.getMessage()
                 );
 
             } finally {
 
                 if (connection != null) {
+
                     connection.disconnect();
                 }
             }
