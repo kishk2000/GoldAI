@@ -254,4 +254,192 @@ public class MainActivity extends Activity {
         );
 
         main.addView(
-                space(15
+                space(15)
+        );
+
+        LinearLayout localCard =
+                card();
+
+        localCard.addView(
+                text(
+                        "🇪🇬 السوق المصري",
+                        21,
+                        gold
+                )
+        );
+
+        gold24 =
+                text(
+                        "عيار 24     -- جنيه",
+                        19,
+                        white
+                );
+
+        gold21 =
+                text(
+                        "عيار 21     -- جنيه",
+                        19,
+                        white
+                );
+
+        gold18 =
+                text(
+                        "عيار 18     -- جنيه",
+                        19,
+                        white
+                );
+
+        localCard.addView(gold24);
+        localCard.addView(gold21);
+        localCard.addView(gold18);
+
+        main.addView(
+                localCard
+        );
+
+        main.addView(
+                space(15)
+        );
+
+        status =
+                text(
+                        "🟡 جاري الاتصال بمصدر البيانات...",
+                        16,
+                        white
+                );
+
+        status.setGravity(
+                Gravity.CENTER
+        );
+
+        main.addView(status);
+
+        setContentView(main);
+
+        if (Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU) {
+
+            if (checkSelfPermission(
+                    Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(
+                        new String[]{
+                                Manifest.permission.POST_NOTIFICATIONS
+                        },
+                        NOTIFICATION_PERMISSION_REQUEST
+                );
+
+            } else {
+
+                startMarketUpdateService();
+            }
+
+        } else {
+
+            startMarketUpdateService();
+        }
+
+        handler.post(updateTask);
+    }
+
+    private void startMarketUpdateService() {
+
+        Intent serviceIntent =
+                new Intent(
+                        this,
+                        MarketUpdateService.class
+                );
+
+        if (Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.O) {
+
+            startForegroundService(
+                    serviceIntent
+            );
+
+        } else {
+
+            startService(
+                    serviceIntent
+            );
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults) {
+
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (requestCode ==
+                NOTIFICATION_PERMISSION_REQUEST) {
+
+            startMarketUpdateService();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        super.onDestroy();
+
+        handler.removeCallbacks(
+                updateTask
+        );
+    }
+
+    private LinearLayout card() {
+
+        LinearLayout layout =
+                new LinearLayout(this);
+
+        layout.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        layout.setPadding(
+                25, 22, 25, 22
+        );
+
+        layout.setBackgroundColor(card);
+
+        return layout;
+    }
+
+    private TextView text(
+            String value,
+            float size,
+            int color) {
+
+        TextView view =
+                new TextView(this);
+
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(color);
+
+        view.setPadding(
+                0, 5, 0, 5
+        );
+
+        return view;
+    }
+
+    private TextView space(
+            int height) {
+
+        TextView view =
+                new TextView(this);
+
+        view.setHeight(height);
+
+        return view;
+    }
+}
