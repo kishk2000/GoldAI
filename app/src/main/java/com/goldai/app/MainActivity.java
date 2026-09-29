@@ -33,8 +33,7 @@ public class MainActivity extends Activity {
     int green = Color.rgb(34, 197, 94);
 
     TextView price;
-    TextView prediction;
-    TextView confidence;
+    TextView dollar;
     TextView gold24;
     TextView gold21;
     TextView gold18;
@@ -66,28 +65,36 @@ public class MainActivity extends Activity {
                                 )
                         );
 
-                        prediction.setText(
+                        dollar.setText(
                                 String.format(
                                         Locale.US,
-                                        "السعر الحالي: $%.2f",
-                                        data.goldUsd
+                                        "الدولار: %.3f جنيه",
+                                        data.usdEgp
                                 )
                         );
 
-                        confidence.setText(
-                                "الثقة: بيانات سوق حقيقية"
-                        );
-
                         gold24.setText(
-                                "عيار 24     -- جنيه"
+                                String.format(
+                                        Locale.US,
+                                        "عيار 24     %.0f جنيه",
+                                        data.gold24
+                                )
                         );
 
                         gold21.setText(
-                                "عيار 21     -- جنيه"
+                                String.format(
+                                        Locale.US,
+                                        "عيار 21     %.0f جنيه",
+                                        data.gold21
+                                )
                         );
 
                         gold18.setText(
-                                "عيار 18     -- جنيه"
+                                String.format(
+                                        Locale.US,
+                                        "عيار 18     %.0f جنيه",
+                                        data.gold18
+                                )
                         );
 
                         String updateTime =
@@ -95,7 +102,9 @@ public class MainActivity extends Activity {
                                         "HH:mm:ss",
                                         Locale.getDefault()
                                 ).format(
-                                        new Date(data.timestamp)
+                                        new Date(
+                                                data.timestamp
+                                        )
                                 );
 
                         status.setText(
@@ -213,50 +222,6 @@ public class MainActivity extends Activity {
                 space(15)
         );
 
-        LinearLayout predictionCard =
-                card();
-
-        TextView predictionTitle =
-                text(
-                        "🤖 تحليل السعر",
-                        21,
-                        gold
-                );
-
-        prediction =
-                text(
-                        "جاري تحميل السعر...",
-                        20,
-                        white
-                );
-
-        confidence =
-                text(
-                        "الثقة: --",
-                        18,
-                        white
-                );
-
-        predictionCard.addView(
-                predictionTitle
-        );
-
-        predictionCard.addView(
-                prediction
-        );
-
-        predictionCard.addView(
-                confidence
-        );
-
-        main.addView(
-                predictionCard
-        );
-
-        main.addView(
-                space(15)
-        );
-
         LinearLayout localCard =
                 card();
 
@@ -267,6 +232,13 @@ public class MainActivity extends Activity {
                         gold
                 )
         );
+
+        dollar =
+                text(
+                        "الدولار: -- جنيه",
+                        19,
+                        white
+                );
 
         gold24 =
                 text(
@@ -289,13 +261,12 @@ public class MainActivity extends Activity {
                         white
                 );
 
+        localCard.addView(dollar);
         localCard.addView(gold24);
         localCard.addView(gold21);
         localCard.addView(gold18);
 
-        main.addView(
-                localCard
-        );
+        main.addView(localCard);
 
         main.addView(
                 space(15)
@@ -303,7 +274,7 @@ public class MainActivity extends Activity {
 
         status =
                 text(
-                        "🟡 جاري الاتصال بمصدر البيانات...",
+                        "🟡 جاري الاتصال بمصادر البيانات...",
                         16,
                         white
                 );
