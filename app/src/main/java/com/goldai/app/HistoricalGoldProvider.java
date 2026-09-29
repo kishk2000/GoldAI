@@ -7,21 +7,23 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
 public class HistoricalGoldProvider {
 
     private static final String API_URL =
-            "https://api.goldprice.dev/v1/bars";
+            "https://xaus.com/api/v1/history";
 
     public interface Callback {
 
-        void onSuccess(List<GoldBar> bars);
+        void onSuccess(
+                List<GoldBar> bars
+        );
 
-        void onError(String error);
+        void onError(
+                String error
+        );
     }
 
     public static class GoldBar {
@@ -41,9 +43,13 @@ public class HistoricalGoldProvider {
                 double close) {
 
             this.date = date;
+
             this.open = open;
+
             this.high = high;
+
             this.low = low;
+
             this.close = close;
         }
     }
@@ -57,36 +63,29 @@ public class HistoricalGoldProvider {
 
             try {
 
-                LocalDate today =
-                        LocalDate.now(
-                                ZoneOffset.UTC
-                        );
-
-                LocalDate from =
-                        today.minusDays(30);
-
-                String urlString =
-                        API_URL
-                                + "?symbol=XAU-USD-SPOT"
-                                + "&interval=1d"
-                                + "&from="
-                                + from
-                                + "&to="
-                                + today
-                                + "&limit=30";
-
                 URL url =
-                        new URL(urlString);
+                        new URL(API_URL);
 
                 connection =
                         (HttpURLConnection)
                                 url.openConnection();
 
-                connection.setRequestMethod("GET");
+                connection.setRequestMethod(
+                        "GET"
+                );
 
-                connection.setConnectTimeout(15000);
+                connection.setConnectTimeout(
+                        15000
+                );
 
-                connection.setReadTimeout(15000);
+                connection.setReadTimeout(
+                        15000
+                );
+
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
 
                 int responseCode =
                         connection.getResponseCode();
@@ -104,7 +103,8 @@ public class HistoricalGoldProvider {
                 BufferedReader reader =
                         new BufferedReader(
                                 new InputStreamReader(
-                                        connection.getInputStream()
+                                        connection
+                                                .getInputStream()
                                 )
                         );
 
@@ -113,7 +113,10 @@ public class HistoricalGoldProvider {
 
                 String line;
 
-                while ((line = reader.readLine()) != null) {
+                while (
+                        (line = reader.readLine())
+                                != null
+                ) {
 
                     result.append(line);
                 }
@@ -125,54 +128,69 @@ public class HistoricalGoldProvider {
                                 result.toString()
                         );
 
-                JSONArray bars =
-                        root.getJSONArray("bars");
+                JSONArray points =
+                        root.getJSONArray(
+                                "points"
+                        );
 
                 List<GoldBar> history =
                         new ArrayList<>();
 
-                for (int i = 0;
-                     i < bars.length();
-                     i++) {
+                for (
+                        int i = 0;
+                        i < points.length();
+                        i++
+                ) {
 
-                    JSONObject bar =
-                            bars.getJSONObject(i);
-
-                    boolean isClosed =
-                            bar.getBoolean(
-                                    "is_closed"
-                            );
-
-                    // نستبعد شمعة اليوم
-                    // إذا كانت ما زالت مفتوحة
-                    if (!isClosed) {
-                        continue;
-                    }
+                    JSONObject point =
+                            points.getJSONObject(i);
 
                     String date =
-                            bar.getString(
-                                    "bar_start"
-                            );
-
-                    double open =
-                            bar.getDouble(
-                                    "open"
-                            );
-
-                    double high =
-                            bar.getDouble(
-                                    "high"
-                            );
-
-                    double low =
-                            bar.getDouble(
-                                    "low"
+                            point.getString(
+                                    "d"
                             );
 
                     double close =
-                            bar.getDouble(
-                                    "close"
+                            point.getDouble(
+                                    "c"
                             );
+
+                    double high =
+                            point.getDouble(
+                                    "h"
+                            );
+
+                    double low =
+                            point.getDouble(
+                                    "l"
+                            );
+
+                    /*
+                     * XAUS history endpoint
+                     * يعرض close/high/low.
+                     *
+                     * لا يوجد open في صيغة النقطة
+                     * المستخدمة هنا، لذلك نستخدم close
+                     * السابق كقيمة تقريبية للـ open.
+                     *
+                     * المؤشرات الحالية تعتمد أساسًا
+                     * على close، لذلك لن يؤثر ذلك
+                     * على RSI وEMA وMomentum.
+                     */
+
+                    double open;
+
+                    if (i > 0) {
+
+                        open =
+                                points
+                                        .getJSONObject(i - 1)
+                                        .getDouble("c");
+
+                    } else {
+
+                        open = close;
+                    }
 
                     history.add(
                             new GoldBar(
@@ -183,6 +201,17 @@ public class HistoricalGoldProvider {
                                     close
                             )
                     );
+                }
+
+                if (history.size() < 20) {
+
+                    callback.onError(
+                            "التاريخ المستلم غير كافٍ: "
+                                    + history.size()
+                                    + " يوم"
+                    );
+
+                    return;
                 }
 
                 callback.onSuccess(
