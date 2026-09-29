@@ -58,7 +58,7 @@ public class MarketUpdateService extends Service {
 
             handler.postDelayed(
                     this,
-                    30000
+                  45000
             );
         }
     };
