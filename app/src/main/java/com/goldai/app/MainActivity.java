@@ -11,6 +11,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.goldai.app.data.DataEngine;
+import com.goldai.app.data.XausProvider;
 import com.goldai.app.data.DemoProvider;
 import com.goldai.app.data.MarketData;
 
@@ -95,8 +96,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         dataEngine = new DataEngine(
-                new DemoProvider()
-        );
+        new XausProvider()
+);
 
         LinearLayout main = new LinearLayout(this);
         main.setOrientation(LinearLayout.VERTICAL);
