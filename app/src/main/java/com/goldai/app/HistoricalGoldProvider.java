@@ -4,9 +4,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -72,6 +74,8 @@ public class HistoricalGoldProvider {
 
                 connection.setReadTimeout(20000);
 
+                connection.setUseCaches(false);
+
                 connection.setRequestProperty(
                         "Accept",
                         "application/json"
@@ -80,47 +84,55 @@ public class HistoricalGoldProvider {
                 int responseCode =
                         connection.getResponseCode();
 
+                InputStream inputStream;
+
+                if (responseCode >= 200 &&
+                        responseCode < 300) {
+
+                    inputStream =
+                            connection.getInputStream();
+
+                } else {
+
+                    inputStream =
+                            connection.getErrorStream();
+                }
+
+                String responseText =
+                        readStream(inputStream);
+
                 if (responseCode != 200) {
 
                     callback.onError(
-                            "خطأ من مصدر التاريخ: "
+                            "HTTP "
                                     + responseCode
+                                    + "\n"
+                                    + responseText
                     );
 
                     return;
                 }
 
-                BufferedReader reader =
-                        new BufferedReader(
-                                new InputStreamReader(
-                                        connection.getInputStream()
-                                )
-                        );
+                if (responseText == null ||
+                        responseText.trim().isEmpty()) {
 
-                StringBuilder result =
-                        new StringBuilder();
+                    callback.onError(
+                            "السيرفر رجع استجابة فارغة"
+                    );
 
-                String line;
-
-                while (
-                        (line = reader.readLine())
-                                != null
-                ) {
-
-                    result.append(line);
+                    return;
                 }
-
-                reader.close();
 
                 JSONObject root =
                         new JSONObject(
-                                result.toString()
+                                responseText
                         );
 
                 if (!root.has("points")) {
 
                     callback.onError(
-                            "مصدر التاريخ لم يرجع بيانات points"
+                            "لا يوجد points في استجابة XAUS\n"
+                                    + responseText
                     );
 
                     return;
@@ -161,12 +173,10 @@ public class HistoricalGoldProvider {
                     double low =
                             point.getDouble("l");
 
-                    double open = close;
-
                     history.add(
                             new GoldBar(
                                     date,
-                                    open,
+                                    close,
                                     high,
                                     low,
                                     close
@@ -177,9 +187,11 @@ public class HistoricalGoldProvider {
                 if (history.size() < 20) {
 
                     callback.onError(
-                            "بيانات التاريخ غير كافية: "
+                            "تم الاتصال بنجاح، لكن عدد الأيام = "
                                     + history.size()
-                                    + " يوم"
+                                    + "\n\n"
+                                    + "بداية الاستجابة:\n"
+                                    + preview(responseText)
                     );
 
                     return;
@@ -192,19 +204,73 @@ public class HistoricalGoldProvider {
             } catch (Exception e) {
 
                 callback.onError(
-                        "فشل تحميل التاريخ: "
-                                + e.getClass().getSimpleName()
-                                + " - "
+                        "نوع الخطأ: "
+                                + e.getClass()
+                                .getSimpleName()
+                                + "\n\n"
+                                + "الرسالة:\n"
                                 + e.getMessage()
                 );
 
             } finally {
 
                 if (connection != null) {
+
                     connection.disconnect();
                 }
             }
 
         }).start();
+    }
+
+    private String readStream(
+            InputStream stream)
+            throws Exception {
+
+        if (stream == null) {
+            return "";
+        }
+
+        BufferedReader reader =
+                new BufferedReader(
+                        new InputStreamReader(
+                                stream,
+                                StandardCharsets.UTF_8
+                        )
+                );
+
+        StringBuilder result =
+                new StringBuilder();
+
+        String line;
+
+        while (
+                (line = reader.readLine())
+                        != null
+        ) {
+
+            result.append(line);
+        }
+
+        reader.close();
+
+        return result.toString();
+    }
+
+    private String preview(
+            String text) {
+
+        if (text == null) {
+            return "";
+        }
+
+        if (text.length() <= 500) {
+            return text;
+        }
+
+        return text.substring(
+                0,
+                500
+        );
     }
 }
