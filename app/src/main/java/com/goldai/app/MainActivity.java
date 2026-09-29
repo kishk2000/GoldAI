@@ -9,6 +9,8 @@ import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.content.Intent;
+import android.os.Build;
 
 import com.goldai.app.data.DataEngine;
 import com.goldai.app.data.XausProvider;
@@ -72,10 +74,6 @@ public class MainActivity extends Activity {
                                 "الثقة: بيانات سوق حقيقية"
                         );
 
-                        /*
-                         * الدولار لم يتم ربطه بعد،
-                         * لذلك لا نحسب أسعار السوق المصري الآن.
-                         */
                         gold24.setText(
                                 "عيار 24     -- جنيه"
                         );
@@ -130,6 +128,29 @@ public class MainActivity extends Activity {
 
         super.onCreate(savedInstanceState);
 
+        /*
+         * تشغيل خدمة تحديث الذهب في الخلفية.
+         */
+        Intent serviceIntent =
+                new Intent(
+                        this,
+                        MarketUpdateService.class
+                );
+
+        if (Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.O) {
+
+            startForegroundService(
+                    serviceIntent
+            );
+
+        } else {
+
+            startService(
+                    serviceIntent
+            );
+        }
+
         dataEngine =
                 new DataEngine(
                         new XausProvider()
@@ -177,9 +198,12 @@ public class MainActivity extends Activity {
         main.addView(title);
         main.addView(subtitle);
 
-        main.addView(space(25));
+        main.addView(
+                space(25)
+        );
 
-        LinearLayout priceCard = card();
+        LinearLayout priceCard =
+                card();
 
         TextView priceTitle =
                 text(
@@ -204,7 +228,9 @@ public class MainActivity extends Activity {
 
         main.addView(priceCard);
 
-        main.addView(space(15));
+        main.addView(
+                space(15)
+        );
 
         LinearLayout predictionCard =
                 card();
@@ -305,9 +331,7 @@ public class MainActivity extends Activity {
                 Gravity.CENTER
         );
 
-        main.addView(
-                status
-        );
+        main.addView(status);
 
         setContentView(main);
 
