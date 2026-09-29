@@ -28,10 +28,10 @@ public class MainActivity extends Activity {
 
     private static final int NOTIFICATION_PERMISSION_REQUEST = 100;
 
-    int gold = Color.rgb(212, 175, 55);
-    int dark = Color.rgb(15, 23, 42);
-    int card = Color.rgb(30, 41, 59);
-    int white = Color.WHITE;
+    private final int gold = Color.rgb(212, 175, 55);
+    private final int dark = Color.rgb(15, 23, 42);
+    private final int card = Color.rgb(30, 41, 59);
+    private final int white = Color.WHITE;
 
     TextView price;
     TextView dollar;
@@ -42,7 +42,6 @@ public class MainActivity extends Activity {
     TextView prediction;
     TextView confidence;
     TextView backtest;
-
     TextView status;
 
     DataEngine dataEngine;
@@ -58,6 +57,10 @@ public class MainActivity extends Activity {
 
     Handler handler =
             new Handler(Looper.getMainLooper());
+
+    List<HistoricalGoldProvider.GoldBar> historicalBars;
+
+    boolean historyLoaded = false;
 
     Runnable updateTask = new Runnable() {
 
@@ -124,13 +127,20 @@ public class MainActivity extends Activity {
                             )
                     );
 
-                    status.setText(
-                            "🟢 البيانات الحالية وصلت\n"
-                                    + "جاري التحليل والاختبار..."
-                    );
-                });
+                    if (historyLoaded) {
 
-                loadHistoricalData(data);
+                        runPrediction(
+                                data
+                        );
+
+                    } else {
+
+                        status.setText(
+                                "🟢 السعر الحالي وصل\n"
+                                        + "جاري تحميل البيانات التاريخية..."
+                        );
+                    }
+                });
             }
 
             @Override
@@ -139,7 +149,7 @@ public class MainActivity extends Activity {
 
                 runOnUiThread(() ->
                         status.setText(
-                                "🔴 تعذر تحديث البيانات\n"
+                                "🔴 تعذر تحديث السعر\n"
                                         + error
                         )
                 );
@@ -147,8 +157,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void loadHistoricalData(
-            MarketData currentData) {
+    private void loadHistoryOnce() {
 
         historyProvider.getLatestHistory(
                 new HistoricalGoldProvider.Callback() {
@@ -157,79 +166,17 @@ public class MainActivity extends Activity {
             public void onSuccess(
                     List<HistoricalGoldProvider.GoldBar> bars) {
 
-                PredictionEngine.PredictionResult result =
-                        predictionEngine.analyze(
-                                currentData.goldUsd,
-                                bars
-                        );
-
-                BacktestEngine.BacktestResult testResult =
-                        backtestEngine.run(
-                                bars
-                        );
+                historicalBars = bars;
+                historyLoaded = true;
 
                 runOnUiThread(() -> {
 
-                    prediction.setText(
-                            String.format(
-                                    Locale.US,
-                                    "الاتجاه: %s\n"
-                                            + "السعر المتوقع: $%.2f\n"
-                                            + "البيانات المستخدمة: %d يوم",
-                                    result.direction,
-                                    result.predictedPrice,
-                                    bars.size()
-                            )
-                    );
-
-                    confidence.setText(
-                            String.format(
-                                    Locale.US,
-                                    "الثقة التحليلية: %.0f%%",
-                                    result.confidence
-                            )
-                    );
-
-                    if (testResult.totalTests > 0) {
-
-                        backtest.setText(
-                                String.format(
-                                        Locale.US,
-                                        "📊 الاختبار التاريخي\n"
-                                                + "دقة الاتجاه: %.1f%%\n"
-                                                + "التوقعات الصحيحة: %d من %d\n"
-                                                + "متوسط خطأ السعر: $%.2f",
-                                        testResult.directionAccuracy,
-                                        testResult.correctTests,
-                                        testResult.totalTests,
-                                        testResult.averageAbsoluteError
-                                )
-                        );
-
-                    } else {
-
-                        backtest.setText(
-                                "📊 الاختبار التاريخي\n"
-                                        + "بيانات غير كافية للاختبار"
-                        );
-                    }
-
-                    String updateTime =
-                            new SimpleDateFormat(
-                                    "HH:mm:ss",
-                                    Locale.getDefault()
-                            ).format(
-                                    new Date(
-                                            currentData.timestamp
-                                    )
-                            );
-
                     status.setText(
-                            "🟢 آخر تحديث: "
-                                    + updateTime
-                                    + "\n"
-                                    + "تحديث تلقائي كل 30 ثانية"
+                            "🟢 التاريخ جاهز\n"
+                                    + "في انتظار السعر الحالي..."
                     );
+
+                    loadMarketData();
                 });
             }
 
@@ -239,8 +186,10 @@ public class MainActivity extends Activity {
 
                 runOnUiThread(() -> {
 
+                    historyLoaded = false;
+
                     prediction.setText(
-                            "تعذر إجراء التحليل التاريخي"
+                            "تعذر تحميل البيانات التاريخية"
                     );
 
                     confidence.setText(
@@ -253,12 +202,107 @@ public class MainActivity extends Activity {
                     );
 
                     status.setText(
-                            "🟡 الأسعار تعمل\n"
-                                    + "تعذر تحميل البيانات التاريخية"
+                            "🟡 السعر يعمل\n"
+                                    + "تعذر تحميل التاريخ"
                     );
                 });
             }
         });
+    }
+
+    private void runPrediction(
+            MarketData currentData) {
+
+        if (historicalBars == null ||
+                historicalBars.size() < 5) {
+
+            prediction.setText(
+                    "بيانات تاريخية غير كافية"
+            );
+
+            confidence.setText(
+                    "الثقة التحليلية: --"
+            );
+
+            backtest.setText(
+                    "📊 الاختبار التاريخي\n"
+                            + "بيانات غير كافية"
+            );
+
+            return;
+        }
+
+        PredictionEngine.PredictionResult result =
+                predictionEngine.analyze(
+                        currentData.goldUsd,
+                        historicalBars
+                );
+
+        BacktestEngine.BacktestResult testResult =
+                backtestEngine.run(
+                        historicalBars
+                );
+
+        prediction.setText(
+                String.format(
+                        Locale.US,
+                        "الاتجاه: %s\n"
+                                + "السعر المتوقع: $%.2f\n"
+                                + "البيانات المستخدمة: %d يوم",
+                        result.direction,
+                        result.predictedPrice,
+                        historicalBars.size()
+                )
+        );
+
+        confidence.setText(
+                String.format(
+                        Locale.US,
+                        "الثقة التحليلية: %.0f%%",
+                        result.confidence
+                )
+        );
+
+        if (testResult.totalTests > 0) {
+
+            backtest.setText(
+                    String.format(
+                            Locale.US,
+                            "📊 الاختبار التاريخي\n"
+                                    + "دقة الاتجاه: %.1f%%\n"
+                                    + "التوقعات الصحيحة: %d من %d\n"
+                                    + "متوسط خطأ السعر: $%.2f",
+                            testResult.directionAccuracy,
+                            testResult.correctTests,
+                            testResult.totalTests,
+                            testResult.averageAbsoluteError
+                    )
+            );
+
+        } else {
+
+            backtest.setText(
+                    "📊 الاختبار التاريخي\n"
+                            + "بيانات غير كافية للاختبار"
+            );
+        }
+
+        String updateTime =
+                new SimpleDateFormat(
+                        "HH:mm:ss",
+                        Locale.getDefault()
+                ).format(
+                        new Date(
+                                currentData.timestamp
+                        )
+                );
+
+        status.setText(
+                "🟢 آخر تحديث: "
+                        + updateTime
+                        + "\n"
+                        + "السعر يتحدث كل 30 ثانية"
+        );
     }
 
     @Override
@@ -497,6 +541,14 @@ public class MainActivity extends Activity {
             startMarketUpdateService();
         }
 
+        /*
+         * تحميل التاريخ مرة واحدة فقط.
+         */
+        loadHistoryOnce();
+
+        /*
+         * تحديث السعر كل 30 ثانية.
+         */
         handler.post(updateTask);
     }
 
