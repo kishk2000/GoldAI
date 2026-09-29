@@ -1,26 +1,30 @@
 package com.goldai.app;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.graphics.Color;
-import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.content.Intent;
-import android.os.Build;
 
 import com.goldai.app.data.DataEngine;
-import com.goldai.app.data.XausProvider;
 import com.goldai.app.data.MarketData;
+import com.goldai.app.data.XausProvider;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
+
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 100;
 
     int gold = Color.rgb(212, 175, 55);
     int dark = Color.rgb(15, 23, 42);
@@ -127,29 +131,6 @@ public class MainActivity extends Activity {
             Bundle savedInstanceState) {
 
         super.onCreate(savedInstanceState);
-
-        /*
-         * تشغيل خدمة تحديث الذهب في الخلفية.
-         */
-        Intent serviceIntent =
-                new Intent(
-                        this,
-                        MarketUpdateService.class
-                );
-
-        if (Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.O) {
-
-            startForegroundService(
-                    serviceIntent
-            );
-
-        } else {
-
-            startService(
-                    serviceIntent
-            );
-        }
 
         dataEngine =
                 new DataEngine(
@@ -273,129 +254,4 @@ public class MainActivity extends Activity {
         );
 
         main.addView(
-                space(15)
-        );
-
-        LinearLayout localCard =
-                card();
-
-        localCard.addView(
-                text(
-                        "🇪🇬 السوق المصري",
-                        21,
-                        gold
-                )
-        );
-
-        gold24 =
-                text(
-                        "عيار 24     -- جنيه",
-                        19,
-                        white
-                );
-
-        gold21 =
-                text(
-                        "عيار 21     -- جنيه",
-                        19,
-                        white
-                );
-
-        gold18 =
-                text(
-                        "عيار 18     -- جنيه",
-                        19,
-                        white
-                );
-
-        localCard.addView(gold24);
-        localCard.addView(gold21);
-        localCard.addView(gold18);
-
-        main.addView(
-                localCard
-        );
-
-        main.addView(
-                space(15)
-        );
-
-        status =
-                text(
-                        "🟡 جاري الاتصال بمصدر البيانات...",
-                        16,
-                        white
-                );
-
-        status.setGravity(
-                Gravity.CENTER
-        );
-
-        main.addView(status);
-
-        setContentView(main);
-
-        /*
-         * أول تحديث يبدأ فور فتح التطبيق.
-         */
-        handler.post(updateTask);
-    }
-
-    @Override
-    protected void onDestroy() {
-
-        super.onDestroy();
-
-        handler.removeCallbacks(
-                updateTask
-        );
-    }
-
-    private LinearLayout card() {
-
-        LinearLayout layout =
-                new LinearLayout(this);
-
-        layout.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        layout.setPadding(
-                25, 22, 25, 22
-        );
-
-        layout.setBackgroundColor(card);
-
-        return layout;
-    }
-
-    private TextView text(
-            String value,
-            float size,
-            int color) {
-
-        TextView view =
-                new TextView(this);
-
-        view.setText(value);
-        view.setTextSize(size);
-        view.setTextColor(color);
-
-        view.setPadding(
-                0, 5, 0, 5
-        );
-
-        return view;
-    }
-
-    private TextView space(
-            int height) {
-
-        TextView view =
-                new TextView(this);
-
-        view.setHeight(height);
-
-        return view;
-    }
-}
+                space(15
