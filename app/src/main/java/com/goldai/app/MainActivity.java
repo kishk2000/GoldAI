@@ -270,11 +270,21 @@ public class MainActivity extends Activity {
                             "📊 الاختبار التاريخي\n"
                                     + "دقة الاتجاه: %.1f%%\n"
                                     + "التوقعات الصحيحة: %d من %d\n"
-                                    + "متوسط خطأ السعر: $%.2f",
+                                    + "متوسط خطأ السعر: $%.2f\n\n"
+                                    + "⬆️ توقعات الصعود: %d مرة\n"
+                                    + "دقة الصعود: %.1f%%\n"
+                                    + "⬇️ توقعات الهبوط: %d مرة\n"
+                                    + "دقة الهبوط: %.1f%%\n"
+                                    + "↔️ التوقعات العرضية: %d مرة",
                             testResult.directionAccuracy,
                             testResult.correctTests,
                             testResult.totalTests,
-                            testResult.averageAbsoluteError
+                            testResult.averageAbsoluteError,
+                            testResult.predictedUp,
+                            testResult.upAccuracy,
+                            testResult.predictedDown,
+                            testResult.downAccuracy,
+                            testResult.predictedSideways
                     )
             );
 
