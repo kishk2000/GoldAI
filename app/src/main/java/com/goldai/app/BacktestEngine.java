@@ -52,9 +52,6 @@ public class BacktestEngine {
         int correctDownCount = 0;
         int correctSidewaysCount = 0;
 
-        /*
-         * تحليل حسب قوة الإشارة
-         */
         int weakTests = 0;
         int mediumTests = 0;
         int strongTests = 0;
@@ -62,6 +59,44 @@ public class BacktestEngine {
         int weakCorrect = 0;
         int mediumCorrect = 0;
         int strongCorrect = 0;
+
+        /*
+         * ==============================
+         * تشخيص الانحياز
+         * ==============================
+         */
+
+        double totalForecastChange = 0;
+        double totalActualChange = 0;
+
+        double upForecastChange = 0;
+        double upActualChange = 0;
+        double upAbsoluteError = 0;
+        int upTests = 0;
+
+        double downForecastChange = 0;
+        double downActualChange = 0;
+        double downAbsoluteError = 0;
+        int downTests = 0;
+
+        double sidewaysForecastChange = 0;
+        double sidewaysActualChange = 0;
+        double sidewaysAbsoluteError = 0;
+        int sidewaysTests = 0;
+
+        /*
+         * مصفوفة التوقع مقابل الواقع
+         *
+         * الصف = التوقع
+         * العمود = الواقع
+         *
+         * 0 = صعود
+         * 1 = هبوط
+         * 2 = عرضي
+         */
+
+        int[][] confusionMatrix =
+                new int[3][3];
 
         StringBuilder report =
                 new StringBuilder();
@@ -109,9 +144,9 @@ public class BacktestEngine {
             }
 
             /*
-             * ==========================
-             * الحركة الفعلية
-             * ==========================
+             * ==============================
+             * التغير الفعلي
+             * ==============================
              */
 
             double actualChangePercent =
@@ -137,9 +172,9 @@ public class BacktestEngine {
                     ) < 0.30;
 
             /*
-             * ==========================
-             * الحركة المتوقعة
-             * ==========================
+             * ==============================
+             * اتجاه التوقع
+             * ==============================
              */
 
             boolean predictedUp =
@@ -159,26 +194,51 @@ public class BacktestEngine {
 
             String actualDirection;
 
+            int actualIndex;
+
             if (actualUp) {
 
-                actualDirection =
-                        "صعود ↑";
+                actualDirection = "صعود ↑";
+                actualIndex = 0;
 
             } else if (actualDown) {
 
-                actualDirection =
-                        "هبوط ↓";
+                actualDirection = "هبوط ↓";
+                actualIndex = 1;
 
             } else {
 
-                actualDirection =
-                        "عرضي ↔";
+                actualDirection = "عرضي ↔";
+                actualIndex = 2;
+            }
+
+            int predictedIndex;
+
+            if (predictedUp) {
+
+                predictedIndex = 0;
+
+            } else if (predictedDown) {
+
+                predictedIndex = 1;
+
+            } else {
+
+                predictedIndex = 2;
             }
 
             /*
-             * ==========================
-             * صحة التوقع
-             * ==========================
+             * ==============================
+             * مصفوفة التوقع والواقع
+             * ==============================
+             */
+
+            confusionMatrix[predictedIndex][actualIndex]++;
+
+            /*
+             * ==============================
+             * تحديد صحة التوقع
+             * ==============================
              */
 
             boolean correct = false;
@@ -208,6 +268,12 @@ public class BacktestEngine {
                 correctSidewaysCount++;
             }
 
+            /*
+             * ==============================
+             * عدد التوقعات
+             * ==============================
+             */
+
             if (predictedUp) {
 
                 predictedUpCount++;
@@ -226,9 +292,9 @@ public class BacktestEngine {
             }
 
             /*
-             * ==========================
-             * قوة التوقع
-             * ==========================
+             * ==============================
+             * التغير المتوقع
+             * ==============================
              */
 
             double forecastChangePercent =
@@ -242,6 +308,12 @@ public class BacktestEngine {
                             ) * 100.0
                             : 0;
 
+            /*
+             * ==============================
+             * قوة الإشارة
+             * ==============================
+             */
+
             double signalStrength =
                     Math.abs(
                             forecastChangePercent
@@ -251,8 +323,7 @@ public class BacktestEngine {
 
             if (signalStrength < 0.30) {
 
-                signalLevel =
-                        "ضعيفة";
+                signalLevel = "ضعيفة";
 
                 weakTests++;
 
@@ -262,8 +333,7 @@ public class BacktestEngine {
 
             } else if (signalStrength < 1.00) {
 
-                signalLevel =
-                        "متوسطة";
+                signalLevel = "متوسطة";
 
                 mediumTests++;
 
@@ -273,8 +343,7 @@ public class BacktestEngine {
 
             } else {
 
-                signalLevel =
-                        "قوية";
+                signalLevel = "قوية";
 
                 strongTests++;
 
@@ -284,25 +353,10 @@ public class BacktestEngine {
             }
 
             /*
-             * ==========================
-             * النتيجة
-             * ==========================
+             * ==============================
+             * خطأ السعر
+             * ==============================
              */
-
-            String predictionResult;
-
-            if (correct) {
-
-                predictionResult =
-                        "✅ صحيح";
-
-                correctTests++;
-
-            } else {
-
-                predictionResult =
-                        "❌ خطأ";
-            }
 
             double absoluteError =
                     Math.abs(
@@ -310,15 +364,91 @@ public class BacktestEngine {
                                     - actualNextPrice
                     );
 
+            /*
+             * ==============================
+             * إحصائيات عامة
+             * ==============================
+             */
+
+            totalForecastChange +=
+                    forecastChangePercent;
+
+            totalActualChange +=
+                    actualChangePercent;
+
             totalAbsoluteError +=
                     absoluteError;
+
+            /*
+             * ==============================
+             * إحصائيات حسب اتجاه التوقع
+             * ==============================
+             */
+
+            if (predictedUp) {
+
+                upTests++;
+
+                upForecastChange +=
+                        forecastChangePercent;
+
+                upActualChange +=
+                        actualChangePercent;
+
+                upAbsoluteError +=
+                        absoluteError;
+
+            } else if (predictedDown) {
+
+                downTests++;
+
+                downForecastChange +=
+                        forecastChangePercent;
+
+                downActualChange +=
+                        actualChangePercent;
+
+                downAbsoluteError +=
+                        absoluteError;
+
+            } else {
+
+                sidewaysTests++;
+
+                sidewaysForecastChange +=
+                        forecastChangePercent;
+
+                sidewaysActualChange +=
+                        actualChangePercent;
+
+                sidewaysAbsoluteError +=
+                        absoluteError;
+            }
+
+            /*
+             * ==============================
+             * النتيجة
+             * ==============================
+             */
+
+            String predictionResult;
+
+            if (correct) {
+
+                predictionResult = "✅ صحيح";
+                correctTests++;
+
+            } else {
+
+                predictionResult = "❌ خطأ";
+            }
 
             totalTests++;
 
             /*
-             * ==========================
-             * المؤشرات المستخدمة
-             * ==========================
+             * ==============================
+             * المؤشرات
+             * ==============================
              */
 
             double ema5 =
@@ -364,9 +494,9 @@ public class BacktestEngine {
                     ) * 100.0;
 
             /*
-             * ==========================
-             * التقرير
-             * ==========================
+             * ==============================
+             * التقرير التفصيلي
+             * ==============================
              */
 
             report.append(
@@ -432,6 +562,12 @@ public class BacktestEngine {
             );
         }
 
+        /*
+         * ==============================
+         * لا توجد اختبارات
+         * ==============================
+         */
+
         if (totalTests == 0) {
 
             return new BacktestResult(
@@ -449,9 +585,9 @@ public class BacktestEngine {
         }
 
         /*
-         * ==========================
-         * الإحصائيات الأساسية
-         * ==========================
+         * ==============================
+         * الحسابات الأساسية
+         * ==============================
          */
 
         double directionAccuracy =
@@ -492,9 +628,9 @@ public class BacktestEngine {
                         : 0;
 
         /*
-         * ==========================
-         * دقة قوة الإشارة
-         * ==========================
+         * ==============================
+         * قوة الإشارة
+         * ==============================
          */
 
         double weakAccuracy =
@@ -522,9 +658,194 @@ public class BacktestEngine {
                         : 0;
 
         /*
-         * ==========================
-         * الملخص
-         * ==========================
+         * ==============================
+         * المتوسطات العامة
+         * ==============================
+         */
+
+        double averageForecastChange =
+                totalForecastChange
+                        / totalTests;
+
+        double averageActualChange =
+                totalActualChange
+                        / totalTests;
+
+        /*
+         * ==============================
+         * متوسطات الصعود
+         * ==============================
+         */
+
+        double averageUpForecast =
+                upTests > 0
+                        ? upForecastChange / upTests
+                        : 0;
+
+        double averageUpActual =
+                upTests > 0
+                        ? upActualChange / upTests
+                        : 0;
+
+        double averageUpError =
+                upTests > 0
+                        ? upAbsoluteError / upTests
+                        : 0;
+
+        /*
+         * ==============================
+         * متوسطات الهبوط
+         * ==============================
+         */
+
+        double averageDownForecast =
+                downTests > 0
+                        ? downForecastChange / downTests
+                        : 0;
+
+        double averageDownActual =
+                downTests > 0
+                        ? downActualChange / downTests
+                        : 0;
+
+        double averageDownError =
+                downTests > 0
+                        ? downAbsoluteError / downTests
+                        : 0;
+
+        /*
+         * ==============================
+         * متوسطات العرضي
+         * ==============================
+         */
+
+        double averageSidewaysForecast =
+                sidewaysTests > 0
+                        ? sidewaysForecastChange
+                                / sidewaysTests
+                        : 0;
+
+        double averageSidewaysActual =
+                sidewaysTests > 0
+                        ? sidewaysActualChange
+                                / sidewaysTests
+                        : 0;
+
+        double averageSidewaysError =
+                sidewaysTests > 0
+                        ? sidewaysAbsoluteError
+                                / sidewaysTests
+                        : 0;
+
+        /*
+         * ==============================
+         * انحياز النموذج
+         *
+         * موجب = يتوقع حركة أكبر للأعلى
+         * سالب = يتوقع حركة أكبر للأسفل
+         * ==============================
+         */
+
+        double forecastBias =
+                averageForecastChange
+                        - averageActualChange;
+
+        /*
+         * ==============================
+         * مصفوفة الالتباس
+         * ==============================
+         */
+
+        String confusionReport =
+                String.format(
+                        Locale.US,
+
+                        "🧩 مقارنة التوقع بالواقع\n\n"
+
+                                + "                 الواقع\n"
+                                + "              ↑      ↓      ↔\n"
+
+                                + "توقع ↑      %d      %d      %d\n"
+                                + "توقع ↓      %d      %d      %d\n"
+                                + "توقع ↔      %d      %d      %d\n\n",
+
+                        confusionMatrix[0][0],
+                        confusionMatrix[0][1],
+                        confusionMatrix[0][2],
+
+                        confusionMatrix[1][0],
+                        confusionMatrix[1][1],
+                        confusionMatrix[1][2],
+
+                        confusionMatrix[2][0],
+                        confusionMatrix[2][1],
+                        confusionMatrix[2][2]
+                );
+
+        /*
+         * ==============================
+         * تقرير التشخيص
+         * ==============================
+         */
+
+        String diagnosticReport =
+                String.format(
+                        Locale.US,
+
+                        "🧠 تشخيص انحياز المحرك\n\n"
+
+                                + "متوسط التغير المتوقع: %.2f%%\n"
+                                + "متوسط التغير الفعلي: %.2f%%\n"
+                                + "انحياز التوقع: %.2f نقطة مئوية\n\n"
+
+                                + "⬆️ عند توقع الصعود:\n"
+                                + "عدد الاختبارات: %d\n"
+                                + "متوسط التغير المتوقع: %.2f%%\n"
+                                + "متوسط التغير الفعلي: %.2f%%\n"
+                                + "متوسط خطأ السعر: $%.2f\n"
+                                + "دقة توقع الصعود: %.1f%%\n\n"
+
+                                + "⬇️ عند توقع الهبوط:\n"
+                                + "عدد الاختبارات: %d\n"
+                                + "متوسط التغير المتوقع: %.2f%%\n"
+                                + "متوسط التغير الفعلي: %.2f%%\n"
+                                + "متوسط خطأ السعر: $%.2f\n"
+                                + "دقة توقع الهبوط: %.1f%%\n\n"
+
+                                + "↔️ عند توقع العرضي:\n"
+                                + "عدد الاختبارات: %d\n"
+                                + "متوسط التغير المتوقع: %.2f%%\n"
+                                + "متوسط التغير الفعلي: %.2f%%\n"
+                                + "متوسط خطأ السعر: $%.2f\n"
+                                + "دقة التوقع العرضي: %.1f%%\n\n",
+
+                        averageForecastChange,
+                        averageActualChange,
+                        forecastBias,
+
+                        upTests,
+                        averageUpForecast,
+                        averageUpActual,
+                        averageUpError,
+                        upAccuracy,
+
+                        downTests,
+                        averageDownForecast,
+                        averageDownActual,
+                        averageDownError,
+                        downAccuracy,
+
+                        sidewaysTests,
+                        averageSidewaysForecast,
+                        averageSidewaysActual,
+                        averageSidewaysError,
+                        sidewaysAccuracy
+                );
+
+        /*
+         * ==============================
+         * ملخص الاختبار
+         * ==============================
          */
 
         String summary =
@@ -532,6 +853,7 @@ public class BacktestEngine {
                         Locale.US,
 
                         "📊 ملخص الاختبار التاريخي\n\n"
+
                                 + "إجمالي الاختبارات: %d\n"
                                 + "التوقعات الصحيحة: %d\n"
                                 + "التوقعات الخاطئة: %d\n"
@@ -604,9 +926,18 @@ public class BacktestEngine {
                         strongAccuracy
                 );
 
+        /*
+         * ==============================
+         * تجميع التقرير النهائي
+         * ==============================
+         */
+
         report.insert(
                 0,
                 summary
+                        + diagnosticReport
+                        + confusionReport
+                        + "\n"
         );
 
         return new BacktestResult(
@@ -624,17 +955,19 @@ public class BacktestEngine {
     }
 
     /*
-     * ==========================
+     * ==============================
      * EMA
-     * ==========================
+     * ==============================
      */
 
     private double calculateEMA(
             List<HistoricalGoldProvider.GoldBar> bars,
             int period) {
 
-        if (bars == null ||
-                bars.isEmpty()) {
+        if (
+                bars == null ||
+                        bars.isEmpty()
+        ) {
 
             return 0;
         }
@@ -676,9 +1009,9 @@ public class BacktestEngine {
     }
 
     /*
-     * ==========================
+     * ==============================
      * RSI
-     * ==========================
+     * ==============================
      */
 
     private double calculateRSI(
@@ -755,9 +1088,9 @@ public class BacktestEngine {
     }
 
     /*
-     * ==========================
+     * ==============================
      * Momentum
-     * ==========================
+     * ==============================
      */
 
     private double calculateMomentum(
@@ -793,9 +1126,9 @@ public class BacktestEngine {
     }
 
     /*
-     * ==========================
+     * ==============================
      * Backtest Result
-     * ==========================
+     * ==============================
      */
 
     public static class BacktestResult {
