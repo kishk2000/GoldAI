@@ -139,7 +139,6 @@ public class MarketUpdateService extends Service {
                                     .ic_menu_info_details
                     )
                     .setOngoing(true)
-                    .setSilent(true)
                     .build();
 
         } else {
@@ -152,7 +151,6 @@ public class MarketUpdateService extends Service {
                                     .ic_menu_info_details
                     )
                     .setOngoing(true)
-                    .setSilent(true)
                     .build();
         }
     }
@@ -183,9 +181,7 @@ public class MarketUpdateService extends Service {
                             NotificationManager.class
                     );
 
-            manager.createNotificationChannel(
-                    channel
-            );
+            manager.createNotificationChannel(channel);
         }
     }
 
