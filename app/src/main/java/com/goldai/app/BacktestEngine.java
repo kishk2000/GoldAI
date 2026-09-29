@@ -3,6 +3,7 @@ package com.goldai.app;
 import com.goldai.app.data.HistoricalGoldProvider;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class BacktestEngine {
@@ -24,16 +25,17 @@ public class BacktestEngine {
         }
 
         /*
-         * البيانات من GoldPrice.dev تأتي من الأحدث إلى الأقدم.
-         * نقلبها حتى يصبح التاريخ:
-         *
-         * قديم → جديد
+         * توحيد ترتيب البيانات:
+         * الأقدم ← الأحدث
          */
+
         List<HistoricalGoldProvider.GoldBar> chronological =
                 new ArrayList<>(bars);
 
-        java.util.Collections.reverse(
-                chronological
+        Collections.sort(
+                chronological,
+                (a, b) ->
+                        a.date.compareTo(b.date)
         );
 
         int totalTests = 0;
@@ -42,16 +44,18 @@ public class BacktestEngine {
         double totalAbsoluteError = 0;
 
         /*
-         * نحتاج على الأقل 5 أيام قبل أن نبدأ التوقع.
+         * نبدأ من 6 أيام على الأقل
+         * حتى يكون لدى المحرك بيانات كافية.
          *
-         * في كل اختبار:
+         * كل اختبار:
          *
-         * 1- نستخدم الأيام السابقة فقط.
-         * 2- نتوقع السعر التالي.
-         * 3- نقارن التوقع بالسعر الحقيقي.
+         * training = البيانات حتى اليوم الحالي
+         * currentPrice = سعر اليوم الحالي
+         * actualNextPrice = سعر اليوم التالي
          */
+
         for (
-                int i = 5;
+                int i = 6;
                 i < chronological.size() - 1;
                 i++
         ) {
@@ -60,7 +64,7 @@ public class BacktestEngine {
                     new ArrayList<>(
                             chronological.subList(
                                     0,
-                                    i
+                                    i + 1
                             )
                     );
 
@@ -83,18 +87,12 @@ public class BacktestEngine {
             double predictedPrice =
                     result.predictedPrice;
 
-            /*
-             * اتجاه السعر الحقيقي
-             */
             boolean actualUp =
                     actualNextPrice > currentPrice;
 
             boolean actualDown =
                     actualNextPrice < currentPrice;
 
-            /*
-             * الاتجاه الذي توقعه المحرك
-             */
             boolean predictedUp =
                     result.direction.contains(
                             "صعود"
@@ -106,10 +104,13 @@ public class BacktestEngine {
                     );
 
             /*
-             * نحسب صحة الاتجاه.
-             * لو الحركة الفعلية كانت شبه ثابتة
-             * لا نعتبرها خطأ توقع.
+             * نحسب الاتجاه الصحيح فقط
+             * عندما يكون المحرك قال صعود أو هبوط.
+             *
+             * الاتجاه العرضي لا يُحسب صحيحًا
+             * إلا إذا كان السعر التالي شبه ثابت.
              */
+
             if (actualUp && predictedUp) {
 
                 correctTests++;
@@ -128,9 +129,6 @@ public class BacktestEngine {
                 correctTests++;
             }
 
-            /*
-             * خطأ السعر
-             */
             double absoluteError =
                     Math.abs(
                             predictedPrice
