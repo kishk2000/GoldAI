@@ -14,7 +14,7 @@ public class BacktestEngine {
     public BacktestResult run(
             List<HistoricalGoldProvider.GoldBar> bars) {
 
-        if (bars == null || bars.size() < 7) {
+        if (bars == null || bars.size() < 16) {
 
             return new BacktestResult(
                     0,
@@ -43,17 +43,25 @@ public class BacktestEngine {
 
         double totalAbsoluteError = 0;
 
-        // عدد التوقعات لكل اتجاه
         int predictedUpCount = 0;
         int predictedDownCount = 0;
         int predictedSidewaysCount = 0;
 
-        // عدد التوقعات الصحيحة
         int correctUpCount = 0;
         int correctDownCount = 0;
 
+        /*
+         * PredictionEngine يحتاج إلى 15 يومًا على الأقل.
+         *
+         * لذلك نبدأ من index 14.
+         *
+         * مثال:
+         * الأيام 0 → 14 = 15 يوم تدريب
+         * اليوم 15 = النتيجة الفعلية التي سنختبر عليها
+         */
+
         for (
-                int i = 6;
+                int i = 14;
                 i < chronological.size() - 1;
                 i++
         ) {
@@ -82,17 +90,33 @@ public class BacktestEngine {
                             training
                     );
 
+            /*
+             * تجاهل أي نتيجة غير صالحة
+             * في حالة عدم كفاية البيانات.
+             */
+
+            if (result.direction.equals(
+                    "بيانات غير كافية"
+            )) {
+
+                continue;
+            }
+
             double predictedPrice =
                     result.predictedPrice;
 
-            // الاتجاه الفعلي
             boolean actualUp =
                     actualNextPrice > currentPrice;
 
             boolean actualDown =
                     actualNextPrice < currentPrice;
 
-            // الاتجاه المتوقع
+            boolean actualSideways =
+                    Math.abs(
+                            actualNextPrice
+                                    - currentPrice
+                    ) < 0.01;
+
             boolean isPredictedUp =
                     result.direction.contains(
                             "صعود"
@@ -108,7 +132,10 @@ public class BacktestEngine {
                             "عرضي"
                     );
 
-            // حساب عدد توقعات كل اتجاه
+            /*
+             * عدد التوقعات
+             */
+
             if (isPredictedUp) {
 
                 predictedUpCount++;
@@ -120,9 +147,17 @@ public class BacktestEngine {
             } else if (isPredictedSideways) {
 
                 predictedSidewaysCount++;
+
+            } else {
+
+                // نتيجة غير معروفة، لا تدخل في الاختبار
+                continue;
             }
 
-            // حساب الدقة
+            /*
+             * حساب الدقة
+             */
+
             if (actualUp && isPredictedUp) {
 
                 correctTests++;
@@ -134,16 +169,17 @@ public class BacktestEngine {
                 correctDownCount++;
 
             } else if (
-                    Math.abs(
-                            actualNextPrice
-                                    - currentPrice
-                    ) < 0.01
+                    actualSideways
+                            && isPredictedSideways
             ) {
 
                 correctTests++;
             }
 
-            // خطأ السعر
+            /*
+             * خطأ السعر
+             */
+
             double absoluteError =
                     Math.abs(
                             predictedPrice
@@ -179,14 +215,12 @@ public class BacktestEngine {
                 totalAbsoluteError
                         / totalTests;
 
-        // دقة توقع الصعود
         double upAccuracy =
                 predictedUpCount > 0
                         ? (correctUpCount * 100.0)
                         / predictedUpCount
                         : 0;
 
-        // دقة توقع الهبوط
         double downAccuracy =
                 predictedDownCount > 0
                         ? (correctDownCount * 100.0)
