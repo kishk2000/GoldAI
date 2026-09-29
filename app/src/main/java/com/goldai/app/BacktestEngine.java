@@ -20,14 +20,14 @@ public class BacktestEngine {
                     0,
                     0,
                     0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                     0
             );
         }
-
-        /*
-         * توحيد ترتيب البيانات:
-         * الأقدم ← الأحدث
-         */
 
         List<HistoricalGoldProvider.GoldBar> chronological =
                 new ArrayList<>(bars);
@@ -43,16 +43,12 @@ public class BacktestEngine {
 
         double totalAbsoluteError = 0;
 
-        /*
-         * نبدأ من 6 أيام على الأقل
-         * حتى يكون لدى المحرك بيانات كافية.
-         *
-         * كل اختبار:
-         *
-         * training = البيانات حتى اليوم الحالي
-         * currentPrice = سعر اليوم الحالي
-         * actualNextPrice = سعر اليوم التالي
-         */
+        int predictedUp = 0;
+        int predictedDown = 0;
+        int predictedSideways = 0;
+
+        int correctUp = 0;
+        int correctDown = 0;
 
         for (
                 int i = 6;
@@ -103,21 +99,41 @@ public class BacktestEngine {
                             "هبوط"
                     );
 
+            boolean predictedSideways =
+                    result.direction.contains(
+                            "عرضي"
+                    );
+
             /*
-             * نحسب الاتجاه الصحيح فقط
-             * عندما يكون المحرك قال صعود أو هبوط.
-             *
-             * الاتجاه العرضي لا يُحسب صحيحًا
-             * إلا إذا كان السعر التالي شبه ثابت.
+             * عدد توقعات كل اتجاه
+             */
+
+            if (predictedUp) {
+
+                predictedUp++;
+
+            } else if (predictedDown) {
+
+                predictedDown++;
+
+            } else if (predictedSideways) {
+
+                predictedSideways++;
+            }
+
+            /*
+             * دقة الاتجاه
              */
 
             if (actualUp && predictedUp) {
 
                 correctTests++;
+                correctUp++;
 
             } else if (actualDown && predictedDown) {
 
                 correctTests++;
+                correctDown++;
 
             } else if (
                     Math.abs(
@@ -128,6 +144,10 @@ public class BacktestEngine {
 
                 correctTests++;
             }
+
+            /*
+             * خطأ السعر
+             */
 
             double absoluteError =
                     Math.abs(
@@ -147,6 +167,11 @@ public class BacktestEngine {
                     0,
                     0,
                     0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                     0
             );
         }
@@ -159,11 +184,28 @@ public class BacktestEngine {
                 totalAbsoluteError
                         / totalTests;
 
+        double upAccuracy =
+                predictedUp > 0
+                        ? (correctUp * 100.0)
+                        / predictedUp
+                        : 0;
+
+        double downAccuracy =
+                predictedDown > 0
+                        ? (correctDown * 100.0)
+                        / predictedDown
+                        : 0;
+
         return new BacktestResult(
                 totalTests,
                 correctTests,
                 directionAccuracy,
-                averageAbsoluteError
+                averageAbsoluteError,
+                predictedUp,
+                predictedDown,
+                predictedSideways,
+                upAccuracy,
+                downAccuracy
         );
     }
 
@@ -177,11 +219,26 @@ public class BacktestEngine {
 
         public double averageAbsoluteError;
 
+        public int predictedUp;
+
+        public int predictedDown;
+
+        public int predictedSideways;
+
+        public double upAccuracy;
+
+        public double downAccuracy;
+
         public BacktestResult(
                 int totalTests,
                 int correctTests,
                 double directionAccuracy,
-                double averageAbsoluteError) {
+                double averageAbsoluteError,
+                int predictedUp,
+                int predictedDown,
+                int predictedSideways,
+                double upAccuracy,
+                double downAccuracy) {
 
             this.totalTests =
                     totalTests;
@@ -194,6 +251,21 @@ public class BacktestEngine {
 
             this.averageAbsoluteError =
                     averageAbsoluteError;
+
+            this.predictedUp =
+                    predictedUp;
+
+            this.predictedDown =
+                    predictedDown;
+
+            this.predictedSideways =
+                    predictedSideways;
+
+            this.upAccuracy =
+                    upAccuracy;
+
+            this.downAccuracy =
+                    downAccuracy;
         }
     }
 }
