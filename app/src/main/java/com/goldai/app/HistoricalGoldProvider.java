@@ -13,7 +13,7 @@ import java.util.List;
 public class HistoricalGoldProvider {
 
     private static final String API_URL =
-            "https://xaus.com/api/v1/history";
+            "https://xaus.com/api/v1/history?range=1y";
 
     public interface Callback {
 
@@ -43,13 +43,9 @@ public class HistoricalGoldProvider {
                 double close) {
 
             this.date = date;
-
             this.open = open;
-
             this.high = high;
-
             this.low = low;
-
             this.close = close;
         }
     }
@@ -70,17 +66,11 @@ public class HistoricalGoldProvider {
                         (HttpURLConnection)
                                 url.openConnection();
 
-                connection.setRequestMethod(
-                        "GET"
-                );
+                connection.setRequestMethod("GET");
 
-                connection.setConnectTimeout(
-                        15000
-                );
+                connection.setConnectTimeout(20000);
 
-                connection.setReadTimeout(
-                        15000
-                );
+                connection.setReadTimeout(20000);
 
                 connection.setRequestProperty(
                         "Accept",
@@ -93,7 +83,7 @@ public class HistoricalGoldProvider {
                 if (responseCode != 200) {
 
                     callback.onError(
-                            "خطأ في البيانات التاريخية: "
+                            "خطأ من مصدر التاريخ: "
                                     + responseCode
                     );
 
@@ -103,8 +93,7 @@ public class HistoricalGoldProvider {
                 BufferedReader reader =
                         new BufferedReader(
                                 new InputStreamReader(
-                                        connection
-                                                .getInputStream()
+                                        connection.getInputStream()
                                 )
                         );
 
@@ -128,10 +117,17 @@ public class HistoricalGoldProvider {
                                 result.toString()
                         );
 
+                if (!root.has("points")) {
+
+                    callback.onError(
+                            "مصدر التاريخ لم يرجع بيانات points"
+                    );
+
+                    return;
+                }
+
                 JSONArray points =
-                        root.getJSONArray(
-                                "points"
-                        );
+                        root.getJSONArray("points");
 
                 List<GoldBar> history =
                         new ArrayList<>();
@@ -145,52 +141,27 @@ public class HistoricalGoldProvider {
                     JSONObject point =
                             points.getJSONObject(i);
 
+                    if (!point.has("d") ||
+                            !point.has("c") ||
+                            !point.has("h") ||
+                            !point.has("l")) {
+
+                        continue;
+                    }
+
                     String date =
-                            point.getString(
-                                    "d"
-                            );
+                            point.getString("d");
 
                     double close =
-                            point.getDouble(
-                                    "c"
-                            );
+                            point.getDouble("c");
 
                     double high =
-                            point.getDouble(
-                                    "h"
-                            );
+                            point.getDouble("h");
 
                     double low =
-                            point.getDouble(
-                                    "l"
-                            );
+                            point.getDouble("l");
 
-                    /*
-                     * XAUS history endpoint
-                     * يعرض close/high/low.
-                     *
-                     * لا يوجد open في صيغة النقطة
-                     * المستخدمة هنا، لذلك نستخدم close
-                     * السابق كقيمة تقريبية للـ open.
-                     *
-                     * المؤشرات الحالية تعتمد أساسًا
-                     * على close، لذلك لن يؤثر ذلك
-                     * على RSI وEMA وMomentum.
-                     */
-
-                    double open;
-
-                    if (i > 0) {
-
-                        open =
-                                points
-                                        .getJSONObject(i - 1)
-                                        .getDouble("c");
-
-                    } else {
-
-                        open = close;
-                    }
+                    double open = close;
 
                     history.add(
                             new GoldBar(
@@ -206,7 +177,7 @@ public class HistoricalGoldProvider {
                 if (history.size() < 20) {
 
                     callback.onError(
-                            "التاريخ المستلم غير كافٍ: "
+                            "بيانات التاريخ غير كافية: "
                                     + history.size()
                                     + " يوم"
                     );
@@ -222,13 +193,14 @@ public class HistoricalGoldProvider {
 
                 callback.onError(
                         "فشل تحميل التاريخ: "
+                                + e.getClass().getSimpleName()
+                                + " - "
                                 + e.getMessage()
                 );
 
             } finally {
 
                 if (connection != null) {
-
                     connection.disconnect();
                 }
             }
