@@ -60,13 +60,6 @@ public class BacktestEngine {
                 "🔎 تحليل تفصيلي للاختبار التاريخي\n\n"
         );
 
-        /*
-         * PredictionEngine يحتاج إلى 15 يومًا
-         * على الأقل قبل إصدار أول توقع.
-         *
-         * لذلك يبدأ الاختبار من index 14.
-         */
-
         for (
                 int i = 14;
                 i < chronological.size() - 1;
@@ -108,17 +101,36 @@ public class BacktestEngine {
             double predictedPrice =
                     result.predictedPrice;
 
+            /*
+             * تحديد الحركة الفعلية للسعر
+             *
+             * +0.30% أو أكثر  = صعود
+             * أقل من +0.30%
+             * وحتى -0.30%   = عرضي
+             * -0.30% أو أقل  = هبوط
+             */
+
+            double actualChangePercent =
+                    currentPrice != 0
+                            ? (
+                                    (
+                                            actualNextPrice
+                                                    - currentPrice
+                                    )
+                                            / currentPrice
+                            ) * 100.0
+                            : 0;
+
             boolean actualUp =
-                    actualNextPrice > currentPrice;
+                    actualChangePercent >= 0.30;
 
             boolean actualDown =
-                    actualNextPrice < currentPrice;
+                    actualChangePercent <= -0.30;
 
             boolean actualSideways =
                     Math.abs(
-                            actualNextPrice
-                                    - currentPrice
-                    ) < 0.01;
+                            actualChangePercent
+                    ) < 0.30;
 
             boolean predictedUp =
                     result.direction.contains(
@@ -138,11 +150,19 @@ public class BacktestEngine {
             String actualDirection;
 
             if (actualUp) {
-                actualDirection = "صعود ↑";
+
+                actualDirection =
+                        "صعود ↑";
+
             } else if (actualDown) {
-                actualDirection = "هبوط ↓";
+
+                actualDirection =
+                        "هبوط ↓";
+
             } else {
-                actualDirection = "عرضي ↔";
+
+                actualDirection =
+                        "عرضي ↔";
             }
 
             String predictionResult;
@@ -175,20 +195,33 @@ public class BacktestEngine {
             }
 
             if (predictedUp) {
+
                 predictedUpCount++;
+
             } else if (predictedDown) {
+
                 predictedDownCount++;
+
             } else if (predictedSideways) {
+
                 predictedSidewaysCount++;
+
             } else {
+
                 continue;
             }
 
             if (correct) {
-                predictionResult = "✅ صحيح";
+
+                predictionResult =
+                        "✅ صحيح";
+
                 correctTests++;
+
             } else {
-                predictionResult = "❌ خطأ";
+
+                predictionResult =
+                        "❌ خطأ";
             }
 
             double absoluteError =
@@ -196,17 +229,6 @@ public class BacktestEngine {
                             predictedPrice
                                     - actualNextPrice
                     );
-
-            double actualChangePercent =
-                    currentPrice != 0
-                            ? (
-                                    (
-                                            actualNextPrice
-                                                    - currentPrice
-                                    )
-                                            / currentPrice
-                            ) * 100.0
-                            : 0;
 
             double predictedChangePercent =
                     currentPrice != 0
@@ -223,10 +245,6 @@ public class BacktestEngine {
                     absoluteError;
 
             totalTests++;
-
-            /*
-             * إضافة الاختبار إلى التقرير.
-             */
 
             report.append(
                     String.format(
@@ -318,10 +336,6 @@ public class BacktestEngine {
                         / predictedSidewaysCount
                         : 0;
 
-        /*
-         * ملخص التحليل في بداية التقرير.
-         */
-
         String summary =
                 String.format(
                         Locale.US,
@@ -392,21 +406,16 @@ public class BacktestEngine {
     public static class BacktestResult {
 
         public int totalTests;
-
         public int correctTests;
 
         public double directionAccuracy;
-
         public double averageAbsoluteError;
 
         public int predictedUp;
-
         public int predictedDown;
-
         public int predictedSideways;
 
         public double upAccuracy;
-
         public double downAccuracy;
 
         public String detailedReport;
