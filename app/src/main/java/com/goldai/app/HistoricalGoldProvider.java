@@ -7,15 +7,14 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class HistoricalGoldProvider {
 
     private static final String API_URL =
-            "https://api.goldprice.dev/v1/bars";
+            "https://standardbullion.com/api/v1/market/history?metal=XAU&range=3m";
 
     public interface Callback {
 
@@ -57,26 +56,8 @@ public class HistoricalGoldProvider {
 
             try {
 
-                LocalDate today =
-                        LocalDate.now(
-                                ZoneOffset.UTC
-                        );
-
-                LocalDate from =
-                        today.minusDays(119);
-
-                String urlString =
-                        API_URL
-                                + "?symbol=XAU-USD-SPOT"
-                                + "&interval=1d"
-                                + "&from="
-                                + from
-                                + "&to="
-                                + today
-                                + "&limit=119";
-
                 URL url =
-                        new URL(urlString);
+                        new URL(API_URL);
 
                 connection =
                         (HttpURLConnection)
@@ -88,13 +69,18 @@ public class HistoricalGoldProvider {
 
                 connection.setReadTimeout(15000);
 
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
+
                 int responseCode =
                         connection.getResponseCode();
 
                 if (responseCode != 200) {
 
                     callback.onError(
-                            "خطأ في البيانات التاريخية: "
+                            "خطأ في مصدر التاريخ: "
                                     + responseCode
                     );
 
@@ -125,62 +111,71 @@ public class HistoricalGoldProvider {
                                 result.toString()
                         );
 
-                JSONArray bars =
-                        root.getJSONArray("bars");
+                JSONArray points =
+                        root.getJSONArray(
+                                "points"
+                        );
 
                 List<GoldBar> history =
                         new ArrayList<>();
 
                 for (int i = 0;
-                     i < bars.length();
+                     i < points.length();
                      i++) {
 
-                    JSONObject bar =
-                            bars.getJSONObject(i);
+                    JSONObject point =
+                            points.getJSONObject(i);
 
-                    boolean isClosed =
-                            bar.getBoolean(
-                                    "is_closed"
-                            );
+                    String timestamp =
+                            point.getString("t");
 
-                    if (!isClosed) {
-                        continue;
-                    }
+                    double price =
+                            point.getDouble("price");
 
-                    String date =
-                            bar.getString(
-                                    "bar_start"
-                            );
-
-                    double open =
-                            bar.getDouble(
-                                    "open"
-                            );
-
-                    double high =
-                            bar.getDouble(
-                                    "high"
-                            );
-
-                    double low =
-                            bar.getDouble(
-                                    "low"
-                            );
-
-                    double close =
-                            bar.getDouble(
-                                    "close"
-                            );
+                    /*
+                     * المصدر يعطينا سعر الإغلاق اليومي
+                     * وليس OHLC كامل.
+                     *
+                     * لذلك نستخدم السعر نفسه
+                     * كـ Open / High / Low / Close.
+                     */
 
                     history.add(
                             new GoldBar(
-                                    date,
-                                    open,
-                                    high,
-                                    low,
-                                    close
+                                    timestamp,
+                                    price,
+                                    price,
+                                    price,
+                                    price
                             )
                     );
+                }
+
+                /*
+                 * ترتيب البيانات:
+                 * الأقدم ← الأحدث
+                 */
+
+                Collections.sort(
+                        history,
+                        (a, b) ->
+                                a.date.compareTo(b.date)
+                );
+
+                /*
+                 * نحتفظ بآخر 90 يوم
+                 * إذا أعاد المصدر أكثر من ذلك.
+                 */
+
+                if (history.size() > 90) {
+
+                    history =
+                            new ArrayList<>(
+                                    history.subList(
+                                            history.size() - 90,
+                                            history.size()
+                                    )
+                            );
                 }
 
                 callback.onSuccess(
@@ -197,6 +192,7 @@ public class HistoricalGoldProvider {
             } finally {
 
                 if (connection != null) {
+
                     connection.disconnect();
                 }
             }
