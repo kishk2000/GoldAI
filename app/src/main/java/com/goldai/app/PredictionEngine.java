@@ -22,11 +22,27 @@ public class PredictionEngine {
             );
         }
 
-        // تحويل البيانات إلى: الأقدم ← الأحدث
+        /*
+         * البيانات هنا يجب أن تكون:
+         * الأقدم ← الأحدث
+         *
+         * لذلك ننسخ القائمة ونرتبها زمنيًا
+         * بدون التأثير على القائمة الأصلية.
+         */
+
         List<HistoricalGoldProvider.GoldBar> data =
                 new ArrayList<>(bars);
 
-        Collections.reverse(data);
+        Collections.sort(
+                data,
+                (a, b) ->
+                        a.date.compareTo(b.date)
+        );
+
+        double latestClose =
+                data.get(
+                        data.size() - 1
+                ).close;
 
         double ema5 =
                 calculateEMA(data, 5);
@@ -43,44 +59,56 @@ public class PredictionEngine {
         double volatility =
                 calculateVolatility(data);
 
-        // نظام النقاط
         int score = 0;
 
-        // 1 — EMA
+        // EMA Trend
         if (ema5 > ema10) {
+
             score += 2;
+
         } else if (ema5 < ema10) {
+
             score -= 2;
         }
 
-        // 2 — السعر بالنسبة للـ EMA
+        // السعر بالنسبة للـ EMA
         if (currentPrice > ema5) {
+
             score += 1;
+
         } else if (currentPrice < ema5) {
+
             score -= 1;
         }
 
-        // 3 — RSI
+        // RSI
         if (rsi >= 55 && rsi < 70) {
+
             score += 2;
+
         } else if (rsi > 30 && rsi <= 45) {
+
             score -= 2;
+
         } else if (rsi >= 70) {
-            // تشبع شرائي
+
             score -= 1;
+
         } else if (rsi <= 30) {
-            // تشبع بيعي
+
             score += 1;
         }
 
-        // 4 — Momentum
+        // Momentum
         if (momentum > 0.003) {
+
             score += 2;
+
         } else if (momentum < -0.003) {
+
             score -= 2;
         }
 
-        // تحديد الاتجاه
         String direction;
 
         if (score >= 3) {
@@ -97,32 +125,37 @@ public class PredictionEngine {
         }
 
         /*
-         * التوقع السعري:
-         * نستخدم الزخم فقط كأساس للتغير،
-         * ونحد التغير حتى لا ينتج المحرك
-         * توقعات بعيدة جدًا عن السعر الحالي.
+         * التوقع السعري يعتمد على الزخم الأخير.
          */
 
         double adjustedMomentum =
                 momentum;
 
-        // تقليل تأثير الحركة عند التقلب العالي
         if (volatility > 0.05) {
+
             adjustedMomentum *= 0.70;
         }
 
         if (volatility > 0.08) {
+
             adjustedMomentum *= 0.50;
         }
 
-        // منع التوقع من التحرك أكثر من 2% في الاختبار اليومي
+        // الحد الأقصى للتوقع اليومي
         if (adjustedMomentum > 0.02) {
+
             adjustedMomentum = 0.02;
         }
 
         if (adjustedMomentum < -0.02) {
+
             adjustedMomentum = -0.02;
         }
+
+        /*
+         * نستخدم السعر الحالي الحقيقي
+         * للتوقع وليس latestClose القديم.
+         */
 
         double predictedPrice =
                 currentPrice *
@@ -337,7 +370,6 @@ public class PredictionEngine {
 
         double confidence = 50;
 
-        // قوة اتفاق المؤشرات
         if (Math.abs(score) >= 5) {
 
             confidence += 15;
@@ -351,22 +383,24 @@ public class PredictionEngine {
             confidence -= 5;
         }
 
-        // الزخم الواضح
         if (Math.abs(momentum) >= 0.005) {
+
             confidence += 5;
         }
 
-        // التقلب العالي يقلل الثقة
         if (volatility > 0.05) {
+
             confidence -= 5;
         }
 
         if (volatility > 0.08) {
+
             confidence -= 10;
         }
 
-        // RSI شديد التطرف = عدم يقين أكبر
-        if (rsi >= 75 || rsi <= 25) {
+        if (rsi >= 75 ||
+                rsi <= 25) {
+
             confidence -= 5;
         }
 
