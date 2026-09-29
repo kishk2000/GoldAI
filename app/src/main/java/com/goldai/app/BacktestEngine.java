@@ -36,8 +36,7 @@ public class BacktestEngine {
 
         Collections.sort(
                 chronological,
-                (a, b) ->
-                        a.date.compareTo(b.date)
+                (a, b) -> a.date.compareTo(b.date)
         );
 
         int totalTests = 0;
@@ -52,6 +51,17 @@ public class BacktestEngine {
         int correctUpCount = 0;
         int correctDownCount = 0;
         int correctSidewaysCount = 0;
+
+        /*
+         * تحليل حسب قوة الإشارة
+         */
+        int weakTests = 0;
+        int mediumTests = 0;
+        int strongTests = 0;
+
+        int weakCorrect = 0;
+        int mediumCorrect = 0;
+        int strongCorrect = 0;
 
         StringBuilder report =
                 new StringBuilder();
@@ -98,16 +108,10 @@ public class BacktestEngine {
                 continue;
             }
 
-            double predictedPrice =
-                    result.predictedPrice;
-
             /*
-             * تحديد الحركة الفعلية للسعر
-             *
-             * +0.30% أو أكثر  = صعود
-             * أقل من +0.30%
-             * وحتى -0.30%   = عرضي
-             * -0.30% أو أقل  = هبوط
+             * ==========================
+             * الحركة الفعلية
+             * ==========================
              */
 
             double actualChangePercent =
@@ -131,6 +135,12 @@ public class BacktestEngine {
                     Math.abs(
                             actualChangePercent
                     ) < 0.30;
+
+            /*
+             * ==========================
+             * الحركة المتوقعة
+             * ==========================
+             */
 
             boolean predictedUp =
                     result.direction.contains(
@@ -165,7 +175,11 @@ public class BacktestEngine {
                         "عرضي ↔";
             }
 
-            String predictionResult;
+            /*
+             * ==========================
+             * صحة التوقع
+             * ==========================
+             */
 
             boolean correct = false;
 
@@ -211,6 +225,72 @@ public class BacktestEngine {
                 continue;
             }
 
+            /*
+             * ==========================
+             * قوة التوقع
+             * ==========================
+             */
+
+            double forecastChangePercent =
+                    currentPrice != 0
+                            ? (
+                                    (
+                                            result.predictedPrice
+                                                    - currentPrice
+                                    )
+                                            / currentPrice
+                            ) * 100.0
+                            : 0;
+
+            double signalStrength =
+                    Math.abs(
+                            forecastChangePercent
+                    );
+
+            String signalLevel;
+
+            if (signalStrength < 0.30) {
+
+                signalLevel =
+                        "ضعيفة";
+
+                weakTests++;
+
+                if (correct) {
+                    weakCorrect++;
+                }
+
+            } else if (signalStrength < 1.00) {
+
+                signalLevel =
+                        "متوسطة";
+
+                mediumTests++;
+
+                if (correct) {
+                    mediumCorrect++;
+                }
+
+            } else {
+
+                signalLevel =
+                        "قوية";
+
+                strongTests++;
+
+                if (correct) {
+                    strongCorrect++;
+                }
+            }
+
+            /*
+             * ==========================
+             * النتيجة
+             * ==========================
+             */
+
+            String predictionResult;
+
             if (correct) {
 
                 predictionResult =
@@ -226,25 +306,68 @@ public class BacktestEngine {
 
             double absoluteError =
                     Math.abs(
-                            predictedPrice
+                            result.predictedPrice
                                     - actualNextPrice
                     );
-
-            double predictedChangePercent =
-                    currentPrice != 0
-                            ? (
-                                    (
-                                            predictedPrice
-                                                    - currentPrice
-                                    )
-                                            / currentPrice
-                            ) * 100.0
-                            : 0;
 
             totalAbsoluteError +=
                     absoluteError;
 
             totalTests++;
+
+            /*
+             * ==========================
+             * المؤشرات المستخدمة
+             * ==========================
+             */
+
+            double ema5 =
+                    calculateEMA(
+                            training,
+                            5
+                    );
+
+            double ema10 =
+                    calculateEMA(
+                            training,
+                            10
+                    );
+
+            double ema20 =
+                    calculateEMA(
+                            training,
+                            20
+                    );
+
+            double rsi =
+                    calculateRSI(
+                            training,
+                            14
+                    );
+
+            double momentum1 =
+                    calculateMomentum(
+                            training,
+                            1
+                    ) * 100.0;
+
+            double momentum3 =
+                    calculateMomentum(
+                            training,
+                            3
+                    ) * 100.0;
+
+            double momentum5 =
+                    calculateMomentum(
+                            training,
+                            5
+                    ) * 100.0;
+
+            /*
+             * ==========================
+             * التقرير
+             * ==========================
+             */
 
             report.append(
                     String.format(
@@ -259,7 +382,16 @@ public class BacktestEngine {
                                     + "الاتجاه الفعلي: %s\n"
                                     + "التغير الفعلي: %.2f%%\n"
                                     + "التغير المتوقع: %.2f%%\n"
+                                    + "قوة الإشارة: %.2f%% (%s)\n"
+                                    + "RSI: %.1f\n"
+                                    + "EMA5: $%.2f\n"
+                                    + "EMA10: $%.2f\n"
+                                    + "EMA20: $%.2f\n"
+                                    + "Momentum 1D: %.2f%%\n"
+                                    + "Momentum 3D: %.2f%%\n"
+                                    + "Momentum 5D: %.2f%%\n"
                                     + "خطأ السعر: $%.2f\n"
+                                    + "الثقة: %.0f%%\n"
                                     + "النتيجة: %s\n"
                                     + "-------------------------\n",
 
@@ -269,16 +401,31 @@ public class BacktestEngine {
                             nextBar.date,
 
                             currentPrice,
-                            predictedPrice,
+                            result.predictedPrice,
                             actualNextPrice,
 
                             result.direction,
                             actualDirection,
 
                             actualChangePercent,
-                            predictedChangePercent,
+                            forecastChangePercent,
+
+                            signalStrength,
+                            signalLevel,
+
+                            rsi,
+
+                            ema5,
+                            ema10,
+                            ema20,
+
+                            momentum1,
+                            momentum3,
+                            momentum5,
 
                             absoluteError,
+
+                            result.confidence,
 
                             predictionResult
                     )
@@ -301,8 +448,16 @@ public class BacktestEngine {
             );
         }
 
+        /*
+         * ==========================
+         * الإحصائيات الأساسية
+         * ==========================
+         */
+
         double directionAccuracy =
-                (correctTests * 100.0)
+                (
+                        correctTests * 100.0
+                )
                         / totalTests;
 
         double averageAbsoluteError =
@@ -336,6 +491,42 @@ public class BacktestEngine {
                         / predictedSidewaysCount
                         : 0;
 
+        /*
+         * ==========================
+         * دقة قوة الإشارة
+         * ==========================
+         */
+
+        double weakAccuracy =
+                weakTests > 0
+                        ? (
+                                weakCorrect * 100.0
+                        )
+                        / weakTests
+                        : 0;
+
+        double mediumAccuracy =
+                mediumTests > 0
+                        ? (
+                                mediumCorrect * 100.0
+                        )
+                        / mediumTests
+                        : 0;
+
+        double strongAccuracy =
+                strongTests > 0
+                        ? (
+                                strongCorrect * 100.0
+                        )
+                        / strongTests
+                        : 0;
+
+        /*
+         * ==========================
+         * الملخص
+         * ==========================
+         */
+
         String summary =
                 String.format(
                         Locale.US,
@@ -362,6 +553,23 @@ public class BacktestEngine {
                                 + "الصحيحة: %d\n"
                                 + "الدقة: %.1f%%\n\n"
 
+                                + "📈 الدقة حسب قوة الإشارة:\n\n"
+
+                                + "ضعيفة (<0.30%%):\n"
+                                + "الاختبارات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
+                                + "متوسطة (0.30%%–1.00%%):\n"
+                                + "الاختبارات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
+                                + "قوية (≥1.00%%):\n"
+                                + "الاختبارات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
                                 + "=========================\n\n",
 
                         totalTests,
@@ -381,7 +589,19 @@ public class BacktestEngine {
 
                         predictedSidewaysCount,
                         correctSidewaysCount,
-                        sidewaysAccuracy
+                        sidewaysAccuracy,
+
+                        weakTests,
+                        weakCorrect,
+                        weakAccuracy,
+
+                        mediumTests,
+                        mediumCorrect,
+                        mediumAccuracy,
+
+                        strongTests,
+                        strongCorrect,
+                        strongAccuracy
                 );
 
         report.insert(
@@ -402,6 +622,181 @@ public class BacktestEngine {
                 report.toString()
         );
     }
+
+    /*
+     * ==========================
+     * EMA
+     * ==========================
+     */
+
+    private double calculateEMA(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
+
+        if (bars == null ||
+                bars.isEmpty()) {
+
+            return 0;
+        }
+
+        int count =
+                Math.min(
+                        period,
+                        bars.size()
+                );
+
+        int start =
+                bars.size() - count;
+
+        double ema =
+                bars.get(start).close;
+
+        double multiplier =
+                2.0 /
+                        (count + 1.0);
+
+        for (
+                int i = start + 1;
+                i < bars.size();
+                i++
+        ) {
+
+            double close =
+                    bars.get(i).close;
+
+            ema =
+                    (
+                            close - ema
+                    )
+                            * multiplier
+                            + ema;
+        }
+
+        return ema;
+    }
+
+    /*
+     * ==========================
+     * RSI
+     * ==========================
+     */
+
+    private double calculateRSI(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
+
+        if (bars.size() < 2) {
+
+            return 50;
+        }
+
+        period =
+                Math.min(
+                        period,
+                        bars.size() - 1
+                );
+
+        double gains = 0;
+        double losses = 0;
+
+        int start =
+                bars.size() - period;
+
+        for (
+                int i = start;
+                i < bars.size();
+                i++
+        ) {
+
+            double current =
+                    bars.get(i).close;
+
+            double previous =
+                    bars.get(i - 1).close;
+
+            double change =
+                    current - previous;
+
+            if (change > 0) {
+
+                gains += change;
+
+            } else if (change < 0) {
+
+                losses -= change;
+            }
+        }
+
+        double averageGain =
+                gains / period;
+
+        double averageLoss =
+                losses / period;
+
+        if (averageLoss == 0) {
+
+            if (averageGain == 0) {
+
+                return 50;
+            }
+
+            return 100;
+        }
+
+        double rs =
+                averageGain /
+                        averageLoss;
+
+        return 100 -
+                (
+                        100 /
+                                (1 + rs)
+                );
+    }
+
+    /*
+     * ==========================
+     * Momentum
+     * ==========================
+     */
+
+    private double calculateMomentum(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
+
+        if (bars.size() <= period) {
+
+            return 0;
+        }
+
+        int latestIndex =
+                bars.size() - 1;
+
+        double latest =
+                bars.get(
+                        latestIndex
+                ).close;
+
+        double previous =
+                bars.get(
+                        latestIndex - period
+                ).close;
+
+        if (previous == 0) {
+
+            return 0;
+        }
+
+        return (
+                latest - previous
+        ) / previous;
+    }
+
+    /*
+     * ==========================
+     * Backtest Result
+     * ==========================
+     */
 
     public static class BacktestResult {
 
