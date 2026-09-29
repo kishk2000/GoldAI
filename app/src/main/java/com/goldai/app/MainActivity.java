@@ -264,7 +264,14 @@ public class MainActivity extends Activity {
 
         if (testResult.totalTests > 0) {
 
-            backtest.setText(
+            /*
+             * عرض الملخص أولاً
+             */
+
+            StringBuilder display =
+                    new StringBuilder();
+
+            display.append(
                     String.format(
                             Locale.US,
                             "📊 الاختبار التاريخي\n"
@@ -275,17 +282,38 @@ public class MainActivity extends Activity {
                                     + "دقة الصعود: %.1f%%\n"
                                     + "⬇️ توقعات الهبوط: %d مرة\n"
                                     + "دقة الهبوط: %.1f%%\n"
-                                    + "↔️ التوقعات العرضية: %d مرة",
+                                    + "↔️ التوقعات العرضية: %d مرة\n\n"
+                                    + "════════════════════\n\n",
+
                             testResult.directionAccuracy,
                             testResult.correctTests,
                             testResult.totalTests,
                             testResult.averageAbsoluteError,
+
                             testResult.predictedUp,
                             testResult.upAccuracy,
+
                             testResult.predictedDown,
                             testResult.downAccuracy,
+
                             testResult.predictedSideways
                     )
+            );
+
+            /*
+             * إضافة التقرير التفصيلي للـ61 اختبار.
+             */
+
+            if (testResult.detailedReport != null &&
+                    !testResult.detailedReport.isEmpty()) {
+
+                display.append(
+                        testResult.detailedReport
+                );
+            }
+
+            backtest.setText(
+                    display.toString()
             );
 
         } else {
@@ -445,9 +473,11 @@ public class MainActivity extends Activity {
         backtest =
                 text(
                         "جاري إجراء الاختبار التاريخي...",
-                        18,
+                        17,
                         white
                 );
+
+        backtest.setTextIsSelectable(true);
 
         backtestCard.addView(backtest);
 
