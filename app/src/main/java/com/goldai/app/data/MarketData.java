@@ -4,6 +4,7 @@ public class MarketData {
 
     public double goldUsd;
     public double usdEgp;
+
     public double gold24;
     public double gold21;
     public double gold18;
