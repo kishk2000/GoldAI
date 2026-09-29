@@ -5,11 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
-
-import androidx.annotation.Nullable;
 
 import com.goldai.app.data.DataEngine;
 import com.goldai.app.data.MarketData;
@@ -17,14 +16,19 @@ import com.goldai.app.data.XausProvider;
 
 public class MarketUpdateService extends Service {
 
-    private static final String CHANNEL_ID = "GOLD_AI_CHANNEL";
-    private static final int NOTIFICATION_ID = 1001;
+    private static final String CHANNEL_ID =
+            "GOLD_AI_CHANNEL";
 
-    private final Handler handler = new Handler();
+    private static final int NOTIFICATION_ID =
+            1001;
+
+    private final Handler handler =
+            new Handler();
 
     private DataEngine dataEngine;
 
-    private final Runnable updateTask = new Runnable() {
+    private final Runnable updateTask =
+            new Runnable() {
 
         @Override
         public void run() {
@@ -32,26 +36,25 @@ public class MarketUpdateService extends Service {
             dataEngine.update(
                     new com.goldai.app.data.MarketDataProvider.Callback() {
 
-                        @Override
-                        public void onSuccess(MarketData data) {
+                @Override
+                public void onSuccess(MarketData data) {
 
-                            updateNotification(
-                                    String.format(
-                                            "XAU/USD: $%.2f",
-                                            data.goldUsd
-                                    )
-                            );
-                        }
+                    updateNotification(
+                            String.format(
+                                    "XAU/USD: $%.2f",
+                                    data.goldUsd
+                            )
+                    );
+                }
 
-                        @Override
-                        public void onError(String error) {
+                @Override
+                public void onError(String error) {
 
-                            updateNotification(
-                                    "GOLD AI - في انتظار البيانات"
-                            );
-                        }
-                    }
-            );
+                    updateNotification(
+                            "GOLD AI - في انتظار البيانات"
+                    );
+                }
+            });
 
             handler.postDelayed(
                     this,
@@ -62,6 +65,7 @@ public class MarketUpdateService extends Service {
 
     @Override
     public void onCreate() {
+
         super.onCreate();
 
         createNotificationChannel();
@@ -82,7 +86,7 @@ public class MarketUpdateService extends Service {
             startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    0x00000008
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             );
 
         } else {
@@ -131,7 +135,8 @@ public class MarketUpdateService extends Service {
                     .setContentTitle(title)
                     .setContentText(text)
                     .setSmallIcon(
-                            android.R.drawable.ic_menu_info_details
+                            android.R.drawable
+                                    .ic_menu_info_details
                     )
                     .setOngoing(true)
                     .setSilent(true)
@@ -143,7 +148,8 @@ public class MarketUpdateService extends Service {
                     .setContentTitle(title)
                     .setContentText(text)
                     .setSmallIcon(
-                            android.R.drawable.ic_menu_info_details
+                            android.R.drawable
+                                    .ic_menu_info_details
                     )
                     .setOngoing(true)
                     .setSilent(true)
@@ -193,7 +199,6 @@ public class MarketUpdateService extends Service {
         super.onDestroy();
     }
 
-    @Nullable
     @Override
     public IBinder onBind(
             Intent intent) {
