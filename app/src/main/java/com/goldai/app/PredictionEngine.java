@@ -8,11 +8,25 @@ import java.util.List;
 
 public class PredictionEngine {
 
+    /*
+     * معامل معايرة حجم الحركة المتوقعة.
+     *
+     * المحرك القديم كان يبالغ في حجم الحركة:
+     *
+     * مثال:
+     * +1.95% متوقعة مقابل -0.13% فعليًا
+     *
+     * لذلك نخفض حجم التوقع دون تغيير
+     * طريقة تحديد الاتجاه.
+     */
+    private static final double CALIBRATION_FACTOR = 0.45;
+
     public PredictionResult analyze(
             double currentPrice,
             List<HistoricalGoldProvider.GoldBar> bars) {
 
         if (bars == null || bars.size() < 15) {
+
             return new PredictionResult(
                     currentPrice,
                     currentPrice,
@@ -29,36 +43,68 @@ public class PredictionEngine {
                 (a, b) -> a.date.compareTo(b.date)
         );
 
-        double ema5 = calculateEMA(data, 5);
-        double ema10 = calculateEMA(data, 10);
-        double ema20 = calculateEMA(data, 20);
-        double rsi = calculateRSI(data, 14);
+        double ema5 =
+                calculateEMA(data, 5);
 
-        double momentum1 = calculateMomentum(data, 1);
-        double momentum3 = calculateMomentum(data, 3);
-        double momentum5 = calculateMomentum(data, 5);
+        double ema10 =
+                calculateEMA(data, 10);
 
-        double volatility = calculateVolatility(data, 14);
+        double ema20 =
+                calculateEMA(data, 20);
+
+        double rsi =
+                calculateRSI(data, 14);
+
+        double momentum1 =
+                calculateMomentum(data, 1);
+
+        double momentum3 =
+                calculateMomentum(data, 3);
+
+        double momentum5 =
+                calculateMomentum(data, 5);
+
+        double volatility =
+                calculateVolatility(data, 14);
+
+        /*
+         * ==============================
+         * حساب قوة الاتجاه
+         * ==============================
+         */
 
         double score = 0;
 
         if (ema5 > ema10) {
+
             score += 2.0;
+
         } else {
+
             score -= 2.0;
         }
 
         if (ema10 > ema20) {
+
             score += 2.0;
+
         } else {
+
             score -= 2.0;
         }
 
         if (currentPrice > ema5) {
+
             score += 1.0;
+
         } else {
+
             score -= 1.0;
         }
+
+        /*
+         * RSI
+         */
 
         if (rsi >= 55 && rsi < 70) {
 
@@ -81,6 +127,10 @@ public class PredictionEngine {
             score += 1.0;
         }
 
+        /*
+         * Momentum
+         */
+
         score += momentumScore(
                 momentum1,
                 2.0
@@ -95,6 +145,15 @@ public class PredictionEngine {
                 momentum5,
                 2.0
         );
+
+        /*
+         * ==============================
+         * تحديد الاتجاه
+         * ==============================
+         *
+         * مهم:
+         * نفس القواعد القديمة تمامًا.
+         */
 
         String direction;
 
@@ -111,6 +170,12 @@ public class PredictionEngine {
             direction = "عرضي ↔";
         }
 
+        /*
+         * ==============================
+         * حساب الحركة المتوقعة
+         * ==============================
+         */
+
         double forecastReturn =
                 (
                         momentum1 * 0.20
@@ -125,6 +190,10 @@ public class PredictionEngine {
                         ) * 0.15
                 );
 
+        /*
+         * تعديل RSI
+         */
+
         if (rsi > 70) {
 
             forecastReturn -= 0.0025;
@@ -133,6 +202,12 @@ public class PredictionEngine {
 
             forecastReturn += 0.0025;
         }
+
+        /*
+         * ==============================
+         * اتفاق المؤشرات
+         * ==============================
+         */
 
         double agreement =
                 Math.abs(score);
@@ -146,6 +221,12 @@ public class PredictionEngine {
             forecastReturn *= 0.65;
         }
 
+        /*
+         * ==============================
+         * تقليل أثر التقلب العالي
+         * ==============================
+         */
+
         if (volatility > 0.04) {
 
             forecastReturn *= 0.85;
@@ -155,6 +236,25 @@ public class PredictionEngine {
 
             forecastReturn *= 0.70;
         }
+
+        /*
+         * ==============================
+         * المعايرة الجديدة
+         * ==============================
+         *
+         * هنا التغيير الأساسي في هذه النسخة.
+         *
+         * لا نغير الاتجاه.
+         * لا نغير المؤشرات.
+         * فقط نقلل حجم الحركة المتوقعة.
+         */
+
+        forecastReturn *=
+                CALIBRATION_FACTOR;
+
+        /*
+         * الحد الأقصى بعد المعايرة
+         */
 
         if (forecastReturn > 0.03) {
 
@@ -166,9 +266,21 @@ public class PredictionEngine {
             forecastReturn = -0.03;
         }
 
+        /*
+         * ==============================
+         * السعر المتوقع
+         * ==============================
+         */
+
         double predictedPrice =
                 currentPrice *
                         (1.0 + forecastReturn);
+
+        /*
+         * ==============================
+         * الثقة
+         * ==============================
+         */
 
         double confidence =
                 calculateConfidence(
@@ -188,11 +300,20 @@ public class PredictionEngine {
         );
     }
 
+    /*
+     * ==============================
+     * EMA
+     * ==============================
+     */
+
     private double calculateEMA(
             List<HistoricalGoldProvider.GoldBar> bars,
             int period) {
 
-        if (bars == null || bars.isEmpty()) {
+        if (
+                bars == null ||
+                        bars.isEmpty()
+        ) {
 
             return 0;
         }
@@ -210,7 +331,8 @@ public class PredictionEngine {
                 bars.get(start).close;
 
         double multiplier =
-                2.0 / (count + 1.0);
+                2.0 /
+                        (count + 1.0);
 
         for (
                 int i = start + 1;
@@ -231,6 +353,12 @@ public class PredictionEngine {
 
         return ema;
     }
+
+    /*
+     * ==============================
+     * RSI
+     * ==============================
+     */
 
     private double calculateRSI(
             List<HistoricalGoldProvider.GoldBar> bars,
@@ -305,6 +433,12 @@ public class PredictionEngine {
                 );
     }
 
+    /*
+     * ==============================
+     * Momentum
+     * ==============================
+     */
+
     private double calculateMomentum(
             List<HistoricalGoldProvider.GoldBar> bars,
             int period) {
@@ -337,6 +471,12 @@ public class PredictionEngine {
         ) / previous;
     }
 
+    /*
+     * ==============================
+     * Trend Return
+     * ==============================
+     */
+
     private double trendReturn(
             double currentPrice,
             double ema) {
@@ -350,6 +490,12 @@ public class PredictionEngine {
                 currentPrice - ema
         ) / ema;
     }
+
+    /*
+     * ==============================
+     * Momentum Score
+     * ==============================
+     */
 
     private double momentumScore(
             double momentum,
@@ -366,6 +512,12 @@ public class PredictionEngine {
 
         return 0;
     }
+
+    /*
+     * ==============================
+     * Volatility
+     * ==============================
+     */
 
     private double calculateVolatility(
             List<HistoricalGoldProvider.GoldBar> bars,
@@ -430,6 +582,12 @@ public class PredictionEngine {
         ) / average;
     }
 
+    /*
+     * ==============================
+     * Confidence
+     * ==============================
+     */
+
     private double calculateConfidence(
             double score,
             double rsi,
@@ -489,8 +647,10 @@ public class PredictionEngine {
             confidence -= 10;
         }
 
-        if (rsi >= 75 ||
-                rsi <= 25) {
+        if (
+                rsi >= 75 ||
+                        rsi <= 25
+        ) {
 
             confidence -= 5;
         }
@@ -507,6 +667,12 @@ public class PredictionEngine {
 
         return confidence;
     }
+
+    /*
+     * ==============================
+     * Prediction Result
+     * ==============================
+     */
 
     public static class PredictionResult {
 
