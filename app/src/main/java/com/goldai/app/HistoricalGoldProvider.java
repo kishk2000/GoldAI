@@ -63,7 +63,7 @@ public class HistoricalGoldProvider {
                         );
 
                 LocalDate from =
-                        today.minusDays(30);
+                        today.minusDays(119);
 
                 String urlString =
                         API_URL
@@ -73,7 +73,7 @@ public class HistoricalGoldProvider {
                                 + from
                                 + "&to="
                                 + today
-                                + "&limit=30";
+                                + "&limit=119";
 
                 URL url =
                         new URL(urlString);
