@@ -10,7 +10,7 @@ import java.net.URL;
 public class XausProvider implements MarketDataProvider {
 
     private static final String API_URL =
-            "https://xaus.com/api/";
+            "https://xaus.com/api/v1/spot";
 
     @Override
     public void getLatestData(Callback callback) {
@@ -29,9 +29,9 @@ public class XausProvider implements MarketDataProvider {
 
                 int responseCode = connection.getResponseCode();
 
-                if (responseCode != HttpURLConnection.HTTP_OK) {
+                if (responseCode != 200) {
                     callback.onError(
-                            "HTTP Error: " + responseCode
+                            "خطأ من الخادم: " + responseCode
                     );
                     return;
                 }
@@ -43,27 +43,21 @@ public class XausProvider implements MarketDataProvider {
                                 )
                         );
 
-                StringBuilder response =
-                        new StringBuilder();
+                StringBuilder result = new StringBuilder();
 
                 String line;
 
                 while ((line = reader.readLine()) != null) {
-                    response.append(line);
+                    result.append(line);
                 }
 
                 reader.close();
 
                 JSONObject json =
-                        new JSONObject(response.toString());
-
-                /*
-                 * سنحدد أسماء الحقول النهائية
-                 * بعد التأكد من استجابة المصدر.
-                 */
+                        new JSONObject(result.toString());
 
                 double goldUsd =
-                        json.optDouble("XAUUSD", 0);
+                        json.getDouble("spot_usd_oz");
 
                 long timestamp =
                         System.currentTimeMillis();
@@ -83,9 +77,7 @@ public class XausProvider implements MarketDataProvider {
             } catch (Exception e) {
 
                 callback.onError(
-                        e.getMessage() != null
-                                ? e.getMessage()
-                                : "Unknown error"
+                        "فشل الاتصال: " + e.getMessage()
                 );
 
             } finally {
