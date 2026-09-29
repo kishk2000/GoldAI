@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.goldai.app.data.DataEngine;
@@ -71,7 +72,7 @@ public class MainActivity extends Activity {
 
             handler.postDelayed(
                     this,
-                    30000
+                    45000
             );
         }
     };
@@ -129,9 +130,7 @@ public class MainActivity extends Activity {
 
                     if (historyLoaded) {
 
-                        runPrediction(
-                                data
-                        );
+                        runPrediction(data);
 
                     } else {
 
@@ -301,7 +300,7 @@ public class MainActivity extends Activity {
                 "🟢 آخر تحديث: "
                         + updateTime
                         + "\n"
-                        + "السعر يتحدث كل 30 ثانية"
+                        + "تحديث تلقائي كل 45 ثانية"
         );
     }
 
@@ -315,6 +314,11 @@ public class MainActivity extends Activity {
                 new DataEngine(
                         new XausProvider()
                 );
+
+        ScrollView scrollView =
+                new ScrollView(this);
+
+        scrollView.setFillViewport(true);
 
         LinearLayout main =
                 new LinearLayout(this);
@@ -358,12 +362,9 @@ public class MainActivity extends Activity {
         main.addView(title);
         main.addView(subtitle);
 
-        main.addView(
-                space(25)
-        );
+        main.addView(space(25));
 
-        LinearLayout priceCard =
-                card();
+        LinearLayout priceCard = card();
 
         priceCard.addView(
                 text(
@@ -388,12 +389,9 @@ public class MainActivity extends Activity {
 
         main.addView(priceCard);
 
-        main.addView(
-                space(15)
-        );
+        main.addView(space(15));
 
-        LinearLayout predictionCard =
-                card();
+        LinearLayout predictionCard = card();
 
         predictionCard.addView(
                 text(
@@ -422,12 +420,9 @@ public class MainActivity extends Activity {
 
         main.addView(predictionCard);
 
-        main.addView(
-                space(15)
-        );
+        main.addView(space(15));
 
-        LinearLayout backtestCard =
-                card();
+        LinearLayout backtestCard = card();
 
         backtestCard.addView(
                 text(
@@ -448,12 +443,9 @@ public class MainActivity extends Activity {
 
         main.addView(backtestCard);
 
-        main.addView(
-                space(15)
-        );
+        main.addView(space(15));
 
-        LinearLayout localCard =
-                card();
+        LinearLayout localCard = card();
 
         localCard.addView(
                 text(
@@ -498,9 +490,7 @@ public class MainActivity extends Activity {
 
         main.addView(localCard);
 
-        main.addView(
-                space(15)
-        );
+        main.addView(space(15));
 
         status =
                 text(
@@ -515,7 +505,9 @@ public class MainActivity extends Activity {
 
         main.addView(status);
 
-        setContentView(main);
+        scrollView.addView(main);
+
+        setContentView(scrollView);
 
         if (Build.VERSION.SDK_INT >=
                 Build.VERSION_CODES.TIRAMISU) {
@@ -541,14 +533,8 @@ public class MainActivity extends Activity {
             startMarketUpdateService();
         }
 
-        /*
-         * تحميل التاريخ مرة واحدة فقط.
-         */
         loadHistoryOnce();
 
-        /*
-         * تحديث السعر كل 30 ثانية.
-         */
         handler.post(updateTask);
     }
 
