@@ -5,25 +5,29 @@ import com.goldai.app.data.HistoricalGoldProvider;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 public class PredictionEngine {
 
     /*
-     * عدد الحالات التاريخية الأقرب التي سيتم استخدامها.
+     * حدود الحركة المستخدمة لتصنيف الاتجاه.
      */
-    private static final int NEIGHBORS = 8;
+    private static final double UP_THRESHOLD = 0.0030;
+    private static final double DOWN_THRESHOLD = -0.0030;
 
     /*
-     * أقل عدد من البيانات المطلوبة.
+     * أقل عدد بيانات مطلوب.
      */
     private static final int MIN_HISTORY = 20;
 
     /*
-     * حدود تحديد الاتجاه.
+     * معامل لتقليل مبالغة السعر المتوقع.
      */
-    private static final double UP_THRESHOLD = 0.0030;
-    private static final double DOWN_THRESHOLD = -0.0030;
+    private static final double CALIBRATION_FACTOR = 0.45;
+
+    /*
+     * الحد الأقصى للحركة المتوقعة.
+     */
+    private static final double MAX_FORECAST = 0.030;
 
     public PredictionResult analyze(
             double currentPrice,
@@ -50,61 +54,58 @@ public class PredictionEngine {
                 (a, b) -> a.date.compareTo(b.date)
         );
 
-        /*
-         * نستخدم آخر سعر في التاريخ كالحالة الحالية.
-         */
         int currentIndex =
                 data.size() - 1;
 
         /*
          * ==============================
-         * مؤشرات الحالة الحالية
+         * المؤشرات الأساسية
          * ==============================
          */
 
-        double currentEma5 =
+        double ema5 =
                 calculateEMA(
                         data,
                         currentIndex,
                         5
                 );
 
-        double currentEma10 =
+        double ema10 =
                 calculateEMA(
                         data,
                         currentIndex,
                         10
                 );
 
-        double currentEma20 =
+        double ema20 =
                 calculateEMA(
                         data,
                         currentIndex,
                         20
                 );
 
-        double currentRsi =
+        double rsi =
                 calculateRSI(
                         data,
                         currentIndex,
                         14
                 );
 
-        double currentMomentum1 =
+        double momentum1 =
                 calculateMomentum(
                         data,
                         currentIndex,
                         1
                 );
 
-        double currentMomentum3 =
+        double momentum3 =
                 calculateMomentum(
                         data,
                         currentIndex,
                         3
                 );
 
-        double currentMomentum5 =
+        double momentum5 =
                 calculateMomentum(
                         data,
                         currentIndex,
@@ -113,292 +114,342 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * البحث عن الحالات المشابهة
+         * نقاط الاتجاه
          * ==============================
          *
-         * لا نسمح باستخدام اليوم الحالي
-         * أو أي يوم بعده.
-         *
-         * وكل حالة تاريخية يجب أن يكون
-         * لها يوم تالٍ معروف.
+         * كل مجموعة مؤشرات تعطي إشارة
+         * مستقلة بدل الاعتماد على مؤشر واحد.
          */
 
-        List<Neighbor> neighbors =
-                new ArrayList<>();
+        double trendScore = 0;
+        double momentumScore = 0;
+        double rsiScore = 0;
+        double positionScore = 0;
 
-        int firstCandidate =
-                14;
+        /*
+         * ==============================
+         * 1) TREND
+         * ==============================
+         */
 
-        int lastCandidate =
-                currentIndex - 1;
+        if (ema5 > ema10) {
+            trendScore += 1.5;
+        } else {
+            trendScore -= 1.5;
+        }
 
-        for (
-                int i = firstCandidate;
-                i <= lastCandidate;
-                i++
-        ) {
-
-            double ema5 =
-                    calculateEMA(
-                            data,
-                            i,
-                            5
-                    );
-
-            double ema10 =
-                    calculateEMA(
-                            data,
-                            i,
-                            10
-                    );
-
-            double ema20 =
-                    calculateEMA(
-                            data,
-                            i,
-                            20
-                    );
-
-            double rsi =
-                    calculateRSI(
-                            data,
-                            i,
-                            14
-                    );
-
-            double momentum1 =
-                    calculateMomentum(
-                            data,
-                            i,
-                            1
-                    );
-
-            double momentum3 =
-                    calculateMomentum(
-                            data,
-                            i,
-                            3
-                    );
-
-            double momentum5 =
-                    calculateMomentum(
-                            data,
-                            i,
-                            5
-                    );
-
-            double historicalPrice =
-                    data.get(i).close;
-
-            double nextPrice =
-                    data.get(i + 1).close;
-
-            if (historicalPrice == 0) {
-                continue;
-            }
-
-            double nextReturn =
-                    (
-                            nextPrice -
-                                    historicalPrice
-                    ) / historicalPrice;
-
-            /*
-             * ==============================
-             * المسافة بين الحالة الحالية
-             * والحالة التاريخية
-             * ==============================
-             */
-
-            double distance =
-                    calculateDistance(
-                            currentPrice,
-                            currentEma5,
-                            currentEma10,
-                            currentEma20,
-                            currentRsi,
-                            currentMomentum1,
-                            currentMomentum3,
-                            currentMomentum5,
-
-                            historicalPrice,
-                            ema5,
-                            ema10,
-                            ema20,
-                            rsi,
-                            momentum1,
-                            momentum3,
-                            momentum5
-                    );
-
-            neighbors.add(
-                    new Neighbor(
-                            distance,
-                            nextReturn
-                    )
-            );
+        if (ema10 > ema20) {
+            trendScore += 1.5;
+        } else {
+            trendScore -= 1.5;
         }
 
         /*
-         * ترتيب الحالات من الأكثر تشابهًا
-         * إلى الأقل تشابهًا.
+         * ==============================
+         * 2) POSITION
+         * ==============================
          */
 
-        Collections.sort(
-                neighbors,
-                (a, b) ->
-                        Double.compare(
-                                a.distance,
-                                b.distance
-                        )
-        );
+        if (currentPrice > ema5) {
+            positionScore += 1.0;
+        } else {
+            positionScore -= 1.0;
+        }
+
+        if (currentPrice > ema10) {
+            positionScore += 0.75;
+        } else {
+            positionScore -= 0.75;
+        }
 
         /*
          * ==============================
-         * أخذ أقرب الحالات
+         * 3) MOMENTUM
          * ==============================
          */
 
-        int neighborCount =
-                Math.min(
-                        NEIGHBORS,
-                        neighbors.size()
+        momentumScore +=
+                momentumSignal(
+                        momentum1,
+                        1.0
                 );
 
-        if (neighborCount == 0) {
+        momentumScore +=
+                momentumSignal(
+                        momentum3,
+                        1.5
+                );
 
-            return new PredictionResult(
-                    currentPrice,
-                    currentPrice,
-                    "عرضي ↔",
-                    20
-            );
+        momentumScore +=
+                momentumSignal(
+                        momentum5,
+                        2.0
+                );
+
+        /*
+         * ==============================
+         * 4) RSI
+         * ==============================
+         *
+         * لا نعتبر RSI المرتفع وحده
+         * إشارة هبوط مباشرة.
+         */
+
+        if (rsi >= 55 && rsi <= 68) {
+
+            rsiScore += 1.5;
+
+        } else if (rsi >= 45 && rsi < 55) {
+
+            rsiScore += 0;
+
+        } else if (rsi >= 32 && rsi < 45) {
+
+            rsiScore -= 1.0;
+
+        } else if (rsi < 32) {
+
+            /*
+             * تشبع بيعي قد يعني ارتداد.
+             */
+            rsiScore += 1.0;
+
+        } else if (rsi > 68) {
+
+            /*
+             * تشبع شرائي.
+             */
+            rsiScore -= 1.0;
         }
 
         /*
          * ==============================
-         * المتوسط المرجح
+         * الدرجة النهائية للاتجاه
          * ==============================
-         *
-         * الحالة الأقرب لها وزن أكبر.
          */
 
-        double weightedReturn = 0;
-        double totalWeight = 0;
+        double totalScore =
+                trendScore +
+                        momentumScore +
+                        rsiScore +
+                        positionScore;
 
-        int historicalUp = 0;
-        int historicalDown = 0;
-        int historicalSideways = 0;
+        /*
+         * ==============================
+         * حساب التغير المتوقع
+         * ==============================
+         */
 
-        for (
-                int i = 0;
-                i < neighborCount;
-                i++
+        double trendReturn =
+                calculateTrendReturn(
+                        currentPrice,
+                        ema10
+                );
+
+        /*
+         * الزخم له الوزن الأكبر.
+         */
+        double forecastReturn =
+                momentum1 * 0.15 +
+                        momentum3 * 0.25 +
+                        momentum5 * 0.30 +
+                        trendReturn * 0.20;
+
+        /*
+         * RSI adjustment.
+         */
+        if (rsi < 32) {
+
+            forecastReturn += 0.0020;
+
+        } else if (rsi > 68) {
+
+            forecastReturn -= 0.0020;
+
+        } else if (
+                rsi >= 55 &&
+                        rsi <= 68
         ) {
 
-            Neighbor neighbor =
-                    neighbors.get(i);
+            forecastReturn += 0.0010;
 
-            double weight =
-                    1.0 /
-                            (
-                                    0.001 +
-                                            neighbor.distance
-                            );
+        } else if (
+                rsi >= 32 &&
+                        rsi < 45
+        ) {
 
-            weightedReturn +=
-                    neighbor.nextReturn *
-                            weight;
-
-            totalWeight +=
-                    weight;
-
-            if (
-                    neighbor.nextReturn
-                            >= UP_THRESHOLD
-            ) {
-
-                historicalUp++;
-
-            } else if (
-                    neighbor.nextReturn
-                            <= DOWN_THRESHOLD
-            ) {
-
-                historicalDown++;
-
-            } else {
-
-                historicalSideways++;
-            }
+            forecastReturn -= 0.0010;
         }
 
-        double predictedReturn;
+        /*
+         * ==============================
+         * تسارع الزخم
+         * ==============================
+         *
+         * إذا كان زخم اليوم أقوى من متوسط
+         * الزخم الأطول، نضيف دفعة صغيرة.
+         */
 
-        if (totalWeight == 0) {
+        double momentumAcceleration =
+                momentum1 -
+                        (
+                                momentum5 / 5.0
+                        );
 
-            predictedReturn = 0;
+        forecastReturn +=
+                momentumAcceleration * 0.15;
+
+        /*
+         * ==============================
+         * توافق الإشارات
+         * ==============================
+         */
+
+        int bullishVotes = 0;
+        int bearishVotes = 0;
+
+        if (trendScore > 0) {
+            bullishVotes++;
+        } else if (trendScore < 0) {
+            bearishVotes++;
+        }
+
+        if (momentumScore > 0) {
+            bullishVotes++;
+        } else if (momentumScore < 0) {
+            bearishVotes++;
+        }
+
+        if (rsiScore > 0) {
+            bullishVotes++;
+        } else if (rsiScore < 0) {
+            bearishVotes++;
+        }
+
+        if (positionScore > 0) {
+            bullishVotes++;
+        } else if (positionScore < 0) {
+            bearishVotes++;
+        }
+
+        /*
+         * ==============================
+         * تقليل الحركة عندما يكون هناك
+         * تعارض واضح بين المؤشرات.
+         * ==============================
+         */
+
+        int voteDifference =
+                Math.abs(
+                        bullishVotes -
+                                bearishVotes
+                );
+
+        if (voteDifference <= 1) {
+
+            forecastReturn *= 0.60;
+
+        } else if (voteDifference == 2) {
+
+            forecastReturn *= 0.85;
 
         } else {
 
-            predictedReturn =
-                    weightedReturn /
-                            totalWeight;
+            forecastReturn *= 1.05;
         }
 
         /*
          * ==============================
-         * تقليل المبالغة
+         * معايرة حجم التوقع
          * ==============================
-         *
-         * الحالات التاريخية قد تحتوي على
-         * حركة كبيرة جدًا.
-         *
-         * لذلك نستخدم جزءًا من متوسط الحركة
-         * بدل نسخها بالكامل.
          */
 
-        predictedReturn *= 0.65;
+        forecastReturn *=
+                CALIBRATION_FACTOR;
 
         /*
-         * حدود أمان للحركة المتوقعة.
+         * ==============================
+         * الحد الأقصى
+         * ==============================
          */
 
-        if (predictedReturn > 0.025) {
+        if (
+                forecastReturn >
+                        MAX_FORECAST
+        ) {
 
-            predictedReturn = 0.025;
+            forecastReturn =
+                    MAX_FORECAST;
+
         }
 
-        if (predictedReturn < -0.025) {
+        if (
+                forecastReturn <
+                        -MAX_FORECAST
+        ) {
 
-            predictedReturn = -0.025;
+            forecastReturn =
+                    -MAX_FORECAST;
         }
 
         /*
          * ==============================
          * تحديد الاتجاه
          * ==============================
+         *
+         * نستخدم الاتجاه المركب وليس السعر
+         * المتوقع وحده.
          */
 
         String direction;
 
+        /*
+         * إذا كانت الإشارات متقاربة جدًا،
+         * نعتبرها عرضية.
+         */
         if (
-                predictedReturn
-                        >= UP_THRESHOLD
+                voteDifference <= 1 &&
+                        Math.abs(totalScore) < 2.5
+        ) {
+
+            direction = "عرضي ↔";
+
+        } else if (
+                totalScore >= 3.0 &&
+                        forecastReturn >=
+                                UP_THRESHOLD
         ) {
 
             direction = "صعود ↑";
 
         } else if (
-                predictedReturn
-                        <= DOWN_THRESHOLD
+                totalScore <= -3.0 &&
+                        forecastReturn <=
+                                DOWN_THRESHOLD
         ) {
 
             direction = "هبوط ↓";
 
         } else {
 
-            direction = "عرضي ↔";
+            /*
+             * لو الاتجاه قوي لكن مقدار الحركة
+             * صغير، نسمح للدرجة المركبة
+             * بتحديد الاتجاه.
+             */
+
+            if (totalScore >= 4.0) {
+
+                direction = "صعود ↑";
+
+            } else if (totalScore <= -4.0) {
+
+                direction = "هبوط ↓";
+
+            } else {
+
+                direction = "عرضي ↔";
+            }
         }
 
         /*
@@ -411,7 +462,7 @@ public class PredictionEngine {
                 currentPrice *
                         (
                                 1.0 +
-                                        predictedReturn
+                                        forecastReturn
                         );
 
         /*
@@ -422,11 +473,12 @@ public class PredictionEngine {
 
         double confidence =
                 calculateConfidence(
-                        predictedReturn,
-                        historicalUp,
-                        historicalDown,
-                        historicalSideways,
-                        neighborCount
+                        totalScore,
+                        bullishVotes,
+                        bearishVotes,
+                        voteDifference,
+                        rsi,
+                        forecastReturn
                 );
 
         return new PredictionResult(
@@ -439,174 +491,48 @@ public class PredictionEngine {
 
     /*
      * ==============================
-     * حساب المسافة
+     * إشارة الزخم
      * ==============================
      */
 
-    private double calculateDistance(
-            double currentPrice,
-            double currentEma5,
-            double currentEma10,
-            double currentEma20,
-            double currentRsi,
-            double currentMomentum1,
-            double currentMomentum3,
-            double currentMomentum5,
+    private double momentumSignal(
+            double momentum,
+            double weight) {
 
-            double historicalPrice,
-            double historicalEma5,
-            double historicalEma10,
-            double historicalEma20,
-            double historicalRsi,
-            double historicalMomentum1,
-            double historicalMomentum3,
-            double historicalMomentum5) {
+        if (momentum > 0.0030) {
 
-        /*
-         * بدل مقارنة الأسعار الخام،
-         * نقارن النسب حتى لا يصبح السعر نفسه
-         * هو العامل المسيطر.
-         */
+            return weight;
 
-        double currentEma5Gap =
-                safeRatio(
-                        currentPrice,
-                        currentEma5
-                );
+        } else if (momentum < -0.0030) {
 
-        double historicalEma5Gap =
-                safeRatio(
-                        historicalPrice,
-                        historicalEma5
-                );
+            return -weight;
 
-        double currentEma10Gap =
-                safeRatio(
-                        currentPrice,
-                        currentEma10
-                );
+        } else {
 
-        double historicalEma10Gap =
-                safeRatio(
-                        historicalPrice,
-                        historicalEma10
-                );
-
-        double currentEma20Gap =
-                safeRatio(
-                        currentPrice,
-                        currentEma20
-                );
-
-        double historicalEma20Gap =
-                safeRatio(
-                        historicalPrice,
-                        historicalEma20
-                );
-
-        /*
-         * أوزان المؤشرات.
-         */
-
-        double ema5Difference =
-                currentEma5Gap -
-                        historicalEma5Gap;
-
-        double ema10Difference =
-                currentEma10Gap -
-                        historicalEma10Gap;
-
-        double ema20Difference =
-                currentEma20Gap -
-                        historicalEma20Gap;
-
-        double rsiDifference =
-                (
-                        currentRsi -
-                                historicalRsi
-                ) / 100.0;
-
-        double momentum1Difference =
-                currentMomentum1 -
-                        historicalMomentum1;
-
-        double momentum3Difference =
-                currentMomentum3 -
-                        historicalMomentum3;
-
-        double momentum5Difference =
-                currentMomentum5 -
-                        historicalMomentum5;
-
-        /*
-         * المسافة المربعة.
-         */
-
-        double distanceSquared =
-
-                ema5Difference *
-                        ema5Difference *
-                        2.0
-
-                        +
-
-                ema10Difference *
-                        ema10Difference *
-                        2.0
-
-                        +
-
-                ema20Difference *
-                        ema20Difference *
-                        1.5
-
-                        +
-
-                rsiDifference *
-                        rsiDifference *
-                        1.5
-
-                        +
-
-                momentum1Difference *
-                        momentum1Difference *
-                        1.0
-
-                        +
-
-                momentum3Difference *
-                        momentum3Difference *
-                        1.5
-
-                        +
-
-                momentum5Difference *
-                        momentum5Difference *
-                        1.5;
-
-        return Math.sqrt(
-                distanceSquared
-        );
+            return momentum *
+                    weight /
+                    0.0030;
+        }
     }
 
     /*
      * ==============================
-     * نسبة آمنة
+     * Trend Return
      * ==============================
      */
 
-    private double safeRatio(
-            double price,
-            double average) {
+    private double calculateTrendReturn(
+            double currentPrice,
+            double ema10) {
 
-        if (average == 0) {
-
+        if (ema10 == 0) {
             return 0;
         }
 
         return (
-                price - average
-        ) / average;
+                currentPrice -
+                        ema10
+        ) / ema10;
     }
 
     /*
@@ -636,7 +562,9 @@ public class PredictionEngine {
                 );
 
         int start =
-                endIndex - count + 1;
+                endIndex -
+                        count +
+                        1;
 
         double ema =
                 bars.get(start).close;
@@ -656,7 +584,8 @@ public class PredictionEngine {
 
             ema =
                     (
-                            close - ema
+                            close -
+                                    ema
                     )
                             * multiplier
                             + ema;
@@ -702,7 +631,9 @@ public class PredictionEngine {
         double losses = 0;
 
         int start =
-                endIndex - period + 1;
+                endIndex -
+                        period +
+                        1;
 
         for (
                 int i = start;
@@ -717,7 +648,8 @@ public class PredictionEngine {
                     bars.get(i - 1).close;
 
             double change =
-                    current - previous;
+                    current -
+                            previous;
 
             if (change > 0) {
 
@@ -738,7 +670,6 @@ public class PredictionEngine {
         if (averageLoss == 0) {
 
             if (averageGain == 0) {
-
                 return 50;
             }
 
@@ -781,16 +712,17 @@ public class PredictionEngine {
 
         double previous =
                 bars.get(
-                        endIndex - period
+                        endIndex -
+                                period
                 ).close;
 
         if (previous == 0) {
-
             return 0;
         }
 
         return (
-                latest - previous
+                latest -
+                        previous
         ) / previous;
     }
 
@@ -801,107 +733,90 @@ public class PredictionEngine {
      */
 
     private double calculateConfidence(
-            double predictedReturn,
-            int up,
-            int down,
-            int sideways,
-            int total) {
+            double totalScore,
+            int bullishVotes,
+            int bearishVotes,
+            int voteDifference,
+            double rsi,
+            double forecastReturn) {
 
-        if (total <= 0) {
-
-            return 20;
-        }
-
-        int dominant =
-                Math.max(
-                        up,
-                        Math.max(
-                                down,
-                                sideways
-                        )
-                );
-
-        double agreement =
-                (
-                        dominant * 100.0
-                ) / total;
-
-        double confidence =
-                35;
+        double confidence = 35;
 
         /*
-         * اتفاق الحالات التاريخية.
+         * قوة الاتجاه.
          */
 
-        if (agreement >= 75) {
+        double scoreStrength =
+                Math.min(
+                        Math.abs(totalScore),
+                        8.0
+                );
 
-            confidence += 25;
+        confidence +=
+                scoreStrength *
+                        4.0;
 
-        } else if (agreement >= 62.5) {
+        /*
+         * اتفاق المؤشرات.
+         */
+
+        if (voteDifference >= 3) {
 
             confidence += 15;
 
-        } else if (agreement >= 50) {
+        } else if (voteDifference == 2) {
 
-            confidence += 7;
+            confidence += 8;
+
+        } else if (voteDifference == 1) {
+
+            confidence -= 5;
         }
 
         /*
          * قوة الحركة المتوقعة.
          */
 
-        double strength =
+        double movement =
                 Math.abs(
-                        predictedReturn
+                        forecastReturn
                 );
 
-        if (strength >= 0.010) {
+        if (movement >= 0.010) {
 
-            confidence += 10;
+            confidence += 8;
 
-        } else if (strength >= 0.005) {
+        } else if (movement >= 0.005) {
 
-            confidence += 5;
+            confidence += 4;
         }
 
         /*
-         * حدود الثقة.
+         * RSI المتطرف يقلل الثقة قليلًا
+         * لأن احتمالية الانعكاس تزيد.
+         */
+
+        if (
+                rsi < 25 ||
+                        rsi > 75
+        ) {
+
+            confidence -= 5;
+        }
+
+        /*
+         * الحدود.
          */
 
         if (confidence > 85) {
-
             confidence = 85;
         }
 
         if (confidence < 20) {
-
             confidence = 20;
         }
 
         return confidence;
-    }
-
-    /*
-     * ==============================
-     * Neighbor
-     * ==============================
-     */
-
-    private static class Neighbor {
-
-        double distance;
-        double nextReturn;
-
-        Neighbor(
-                double distance,
-                double nextReturn) {
-
-            this.distance =
-                    distance;
-
-            this.nextReturn =
-                    nextReturn;
-        }
     }
 
     /*
