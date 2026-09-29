@@ -1,5 +1,6 @@
 package com.goldai.app.data;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -10,7 +11,7 @@ import java.net.URL;
 public class XausProvider implements MarketDataProvider {
 
     private static final String API_URL =
-            "https://xaus.com/api/v1/spot";
+            "https://api.goldprice.dev/v1/prices?symbol=XAU-USD-SPOT";
 
     @Override
     public void getLatestData(Callback callback) {
@@ -20,18 +21,22 @@ public class XausProvider implements MarketDataProvider {
             HttpURLConnection connection = null;
 
             try {
+
                 URL url = new URL(API_URL);
 
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setConnectTimeout(10000);
-                connection.setReadTimeout(10000);
+                connection =
+                        (HttpURLConnection) url.openConnection();
 
-                int responseCode = connection.getResponseCode();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(15000);
+
+                int responseCode =
+                        connection.getResponseCode();
 
                 if (responseCode != 200) {
                     callback.onError(
-                            "خطأ من الخادم: " + responseCode
+                            "خطأ من المصدر: " + responseCode
                     );
                     return;
                 }
@@ -43,7 +48,8 @@ public class XausProvider implements MarketDataProvider {
                                 )
                         );
 
-                StringBuilder result = new StringBuilder();
+                StringBuilder result =
+                        new StringBuilder();
 
                 String line;
 
@@ -53,14 +59,17 @@ public class XausProvider implements MarketDataProvider {
 
                 reader.close();
 
-                JSONObject json =
+                JSONObject root =
                         new JSONObject(result.toString());
 
-                double goldUsd =
-                        json.getDouble("spot_usd_oz");
+                JSONArray symbols =
+                        root.getJSONArray("symbols");
 
-                long timestamp =
-                        System.currentTimeMillis();
+                JSONObject gold =
+                        symbols.getJSONObject(0);
+
+                double goldUsd =
+                        gold.getDouble("price");
 
                 MarketData data =
                         new MarketData(
@@ -69,7 +78,7 @@ public class XausProvider implements MarketDataProvider {
                                 0,
                                 0,
                                 0,
-                                timestamp
+                                System.currentTimeMillis()
                         );
 
                 callback.onSuccess(data);
