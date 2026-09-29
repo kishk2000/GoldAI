@@ -41,6 +41,8 @@ public class MainActivity extends Activity {
 
     TextView prediction;
     TextView confidence;
+    TextView backtest;
+
     TextView status;
 
     DataEngine dataEngine;
@@ -50,6 +52,9 @@ public class MainActivity extends Activity {
 
     HistoricalGoldProvider historyProvider =
             new HistoricalGoldProvider();
+
+    BacktestEngine backtestEngine =
+            new BacktestEngine();
 
     Handler handler =
             new Handler(Looper.getMainLooper());
@@ -117,12 +122,11 @@ public class MainActivity extends Activity {
                                     "عيار 18     %.0f جنيه",
                                     data.gold18
                             )
-
                     );
 
                     status.setText(
                             "🟢 البيانات الحالية وصلت\n"
-                                    + "جاري تحليل الاتجاه..."
+                                    + "جاري التحليل والاختبار..."
                     );
                 });
 
@@ -159,6 +163,11 @@ public class MainActivity extends Activity {
                                 bars
                         );
 
+                BacktestEngine.BacktestResult testResult =
+                        backtestEngine.run(
+                                bars
+                        );
+
                 runOnUiThread(() -> {
 
                     prediction.setText(
@@ -181,6 +190,30 @@ public class MainActivity extends Activity {
                             )
                     );
 
+                    if (testResult.totalTests > 0) {
+
+                        backtest.setText(
+                                String.format(
+                                        Locale.US,
+                                        "📊 الاختبار التاريخي\n"
+                                                + "دقة الاتجاه: %.1f%%\n"
+                                                + "التوقعات الصحيحة: %d من %d\n"
+                                                + "متوسط خطأ السعر: $%.2f",
+                                        testResult.directionAccuracy,
+                                        testResult.correctTests,
+                                        testResult.totalTests,
+                                        testResult.averageAbsoluteError
+                                )
+                        );
+
+                    } else {
+
+                        backtest.setText(
+                                "📊 الاختبار التاريخي\n"
+                                        + "بيانات غير كافية للاختبار"
+                        );
+                    }
+
                     String updateTime =
                             new SimpleDateFormat(
                                     "HH:mm:ss",
@@ -195,7 +228,7 @@ public class MainActivity extends Activity {
                             "🟢 آخر تحديث: "
                                     + updateTime
                                     + "\n"
-                                    + "تحليل تاريخي فعلي"
+                                    + "تحديث تلقائي كل 30 ثانية"
                     );
                 });
             }
@@ -204,13 +237,26 @@ public class MainActivity extends Activity {
             public void onError(
                     String error) {
 
-                runOnUiThread(() ->
-                        status.setText(
-                                "🟡 الأسعار تعمل\n"
-                                        + "تعذر تحميل التاريخ:\n"
-                                        + error
-                        )
-                );
+                runOnUiThread(() -> {
+
+                    prediction.setText(
+                            "تعذر إجراء التحليل التاريخي"
+                    );
+
+                    confidence.setText(
+                            "الثقة التحليلية: --"
+                    );
+
+                    backtest.setText(
+                            "📊 الاختبار التاريخي\n"
+                                    + "غير متاح حاليًا"
+                    );
+
+                    status.setText(
+                            "🟡 الأسعار تعمل\n"
+                                    + "تعذر تحميل البيانات التاريخية"
+                    );
+                });
             }
         });
     }
@@ -331,6 +377,32 @@ public class MainActivity extends Activity {
         predictionCard.addView(confidence);
 
         main.addView(predictionCard);
+
+        main.addView(
+                space(15)
+        );
+
+        LinearLayout backtestCard =
+                card();
+
+        backtestCard.addView(
+                text(
+                        "📊 اختبار المحرك",
+                        21,
+                        gold
+                )
+        );
+
+        backtest =
+                text(
+                        "جاري إجراء الاختبار التاريخي...",
+                        18,
+                        white
+                );
+
+        backtestCard.addView(backtest);
+
+        main.addView(backtestCard);
 
         main.addView(
                 space(15)
