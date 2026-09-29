@@ -5,6 +5,7 @@ import com.goldai.app.data.HistoricalGoldProvider;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 public class BacktestEngine {
 
@@ -25,7 +26,8 @@ public class BacktestEngine {
                     0,
                     0,
                     0,
-                    0
+                    0,
+                    ""
             );
         }
 
@@ -49,15 +51,20 @@ public class BacktestEngine {
 
         int correctUpCount = 0;
         int correctDownCount = 0;
+        int correctSidewaysCount = 0;
+
+        StringBuilder report =
+                new StringBuilder();
+
+        report.append(
+                "🔎 تحليل تفصيلي للاختبار التاريخي\n\n"
+        );
 
         /*
-         * PredictionEngine يحتاج إلى 15 يومًا على الأقل.
+         * PredictionEngine يحتاج إلى 15 يومًا
+         * على الأقل قبل إصدار أول توقع.
          *
-         * لذلك نبدأ من index 14.
-         *
-         * مثال:
-         * الأيام 0 → 14 = 15 يوم تدريب
-         * اليوم 15 = النتيجة الفعلية التي سنختبر عليها
+         * لذلك يبدأ الاختبار من index 14.
          */
 
         for (
@@ -74,15 +81,17 @@ public class BacktestEngine {
                             )
                     );
 
+            HistoricalGoldProvider.GoldBar currentBar =
+                    chronological.get(i);
+
+            HistoricalGoldProvider.GoldBar nextBar =
+                    chronological.get(i + 1);
+
             double currentPrice =
-                    chronological
-                            .get(i)
-                            .close;
+                    currentBar.close;
 
             double actualNextPrice =
-                    chronological
-                            .get(i + 1)
-                            .close;
+                    nextBar.close;
 
             PredictionEngine.PredictionResult result =
                     predictionEngine.analyze(
@@ -90,15 +99,9 @@ public class BacktestEngine {
                             training
                     );
 
-            /*
-             * تجاهل أي نتيجة غير صالحة
-             * في حالة عدم كفاية البيانات.
-             */
-
             if (result.direction.equals(
                     "بيانات غير كافية"
             )) {
-
                 continue;
             }
 
@@ -117,68 +120,76 @@ public class BacktestEngine {
                                     - currentPrice
                     ) < 0.01;
 
-            boolean isPredictedUp =
+            boolean predictedUp =
                     result.direction.contains(
                             "صعود"
                     );
 
-            boolean isPredictedDown =
+            boolean predictedDown =
                     result.direction.contains(
                             "هبوط"
                     );
 
-            boolean isPredictedSideways =
+            boolean predictedSideways =
                     result.direction.contains(
                             "عرضي"
                     );
 
-            /*
-             * عدد التوقعات
-             */
+            String actualDirection;
 
-            if (isPredictedUp) {
-
-                predictedUpCount++;
-
-            } else if (isPredictedDown) {
-
-                predictedDownCount++;
-
-            } else if (isPredictedSideways) {
-
-                predictedSidewaysCount++;
-
+            if (actualUp) {
+                actualDirection = "صعود ↑";
+            } else if (actualDown) {
+                actualDirection = "هبوط ↓";
             } else {
-
-                // نتيجة غير معروفة، لا تدخل في الاختبار
-                continue;
+                actualDirection = "عرضي ↔";
             }
 
-            /*
-             * حساب الدقة
-             */
+            String predictionResult;
 
-            if (actualUp && isPredictedUp) {
+            boolean correct = false;
 
-                correctTests++;
+            if (
+                    predictedUp
+                            && actualUp
+            ) {
+
+                correct = true;
                 correctUpCount++;
 
-            } else if (actualDown && isPredictedDown) {
+            } else if (
+                    predictedDown
+                            && actualDown
+            ) {
 
-                correctTests++;
+                correct = true;
                 correctDownCount++;
 
             } else if (
-                    actualSideways
-                            && isPredictedSideways
+                    predictedSideways
+                            && actualSideways
             ) {
 
-                correctTests++;
+                correct = true;
+                correctSidewaysCount++;
             }
 
-            /*
-             * خطأ السعر
-             */
+            if (predictedUp) {
+                predictedUpCount++;
+            } else if (predictedDown) {
+                predictedDownCount++;
+            } else if (predictedSideways) {
+                predictedSidewaysCount++;
+            } else {
+                continue;
+            }
+
+            if (correct) {
+                predictionResult = "✅ صحيح";
+                correctTests++;
+            } else {
+                predictionResult = "❌ خطأ";
+            }
 
             double absoluteError =
                     Math.abs(
@@ -186,10 +197,74 @@ public class BacktestEngine {
                                     - actualNextPrice
                     );
 
+            double actualChangePercent =
+                    currentPrice != 0
+                            ? (
+                                    (
+                                            actualNextPrice
+                                                    - currentPrice
+                                    )
+                                            / currentPrice
+                            ) * 100.0
+                            : 0;
+
+            double predictedChangePercent =
+                    currentPrice != 0
+                            ? (
+                                    (
+                                            predictedPrice
+                                                    - currentPrice
+                                    )
+                                            / currentPrice
+                            ) * 100.0
+                            : 0;
+
             totalAbsoluteError +=
                     absoluteError;
 
             totalTests++;
+
+            /*
+             * إضافة الاختبار إلى التقرير.
+             */
+
+            report.append(
+                    String.format(
+                            Locale.US,
+
+                            "اختبار %d\n"
+                                    + "التاريخ: %s → %s\n"
+                                    + "السعر الحالي: $%.2f\n"
+                                    + "السعر المتوقع: $%.2f\n"
+                                    + "السعر الفعلي: $%.2f\n"
+                                    + "الاتجاه المتوقع: %s\n"
+                                    + "الاتجاه الفعلي: %s\n"
+                                    + "التغير الفعلي: %.2f%%\n"
+                                    + "التغير المتوقع: %.2f%%\n"
+                                    + "خطأ السعر: $%.2f\n"
+                                    + "النتيجة: %s\n"
+                                    + "-------------------------\n",
+
+                            totalTests,
+
+                            currentBar.date,
+                            nextBar.date,
+
+                            currentPrice,
+                            predictedPrice,
+                            actualNextPrice,
+
+                            result.direction,
+                            actualDirection,
+
+                            actualChangePercent,
+                            predictedChangePercent,
+
+                            absoluteError,
+
+                            predictionResult
+                    )
+            );
         }
 
         if (totalTests == 0) {
@@ -203,7 +278,8 @@ public class BacktestEngine {
                     0,
                     0,
                     0,
-                    0
+                    0,
+                    report.toString()
             );
         }
 
@@ -217,15 +293,87 @@ public class BacktestEngine {
 
         double upAccuracy =
                 predictedUpCount > 0
-                        ? (correctUpCount * 100.0)
+                        ? (
+                                correctUpCount
+                                        * 100.0
+                        )
                         / predictedUpCount
                         : 0;
 
         double downAccuracy =
                 predictedDownCount > 0
-                        ? (correctDownCount * 100.0)
+                        ? (
+                                correctDownCount
+                                        * 100.0
+                        )
                         / predictedDownCount
                         : 0;
+
+        double sidewaysAccuracy =
+                predictedSidewaysCount > 0
+                        ? (
+                                correctSidewaysCount
+                                        * 100.0
+                        )
+                        / predictedSidewaysCount
+                        : 0;
+
+        /*
+         * ملخص التحليل في بداية التقرير.
+         */
+
+        String summary =
+                String.format(
+                        Locale.US,
+
+                        "📊 ملخص الاختبار التاريخي\n\n"
+                                + "إجمالي الاختبارات: %d\n"
+                                + "التوقعات الصحيحة: %d\n"
+                                + "التوقعات الخاطئة: %d\n"
+                                + "دقة الاتجاه: %.1f%%\n"
+                                + "متوسط خطأ السعر: $%.2f\n\n"
+
+                                + "⬆️ الصعود:\n"
+                                + "التوقعات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
+                                + "⬇️ الهبوط:\n"
+                                + "التوقعات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
+                                + "↔️ العرضي:\n"
+                                + "التوقعات: %d\n"
+                                + "الصحيحة: %d\n"
+                                + "الدقة: %.1f%%\n\n"
+
+                                + "=========================\n\n",
+
+                        totalTests,
+                        correctTests,
+                        totalTests - correctTests,
+
+                        directionAccuracy,
+                        averageAbsoluteError,
+
+                        predictedUpCount,
+                        correctUpCount,
+                        upAccuracy,
+
+                        predictedDownCount,
+                        correctDownCount,
+                        downAccuracy,
+
+                        predictedSidewaysCount,
+                        correctSidewaysCount,
+                        sidewaysAccuracy
+                );
+
+        report.insert(
+                0,
+                summary
+        );
 
         return new BacktestResult(
                 totalTests,
@@ -236,7 +384,8 @@ public class BacktestEngine {
                 predictedDownCount,
                 predictedSidewaysCount,
                 upAccuracy,
-                downAccuracy
+                downAccuracy,
+                report.toString()
         );
     }
 
@@ -260,6 +409,8 @@ public class BacktestEngine {
 
         public double downAccuracy;
 
+        public String detailedReport;
+
         public BacktestResult(
                 int totalTests,
                 int correctTests,
@@ -269,7 +420,8 @@ public class BacktestEngine {
                 int predictedDown,
                 int predictedSideways,
                 double upAccuracy,
-                double downAccuracy) {
+                double downAccuracy,
+                String detailedReport) {
 
             this.totalTests =
                     totalTests;
@@ -297,6 +449,9 @@ public class BacktestEngine {
 
             this.downAccuracy =
                     downAccuracy;
+
+            this.detailedReport =
+                    detailedReport;
         }
     }
 }
