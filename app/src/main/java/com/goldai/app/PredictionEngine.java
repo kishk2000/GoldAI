@@ -12,7 +12,7 @@ public class PredictionEngine {
             double currentPrice,
             List<HistoricalGoldProvider.GoldBar> bars) {
 
-        if (bars == null || bars.size() < 6) {
+        if (bars == null || bars.size() < 15) {
 
             return new PredictionResult(
                     currentPrice,
@@ -22,27 +22,14 @@ public class PredictionEngine {
             );
         }
 
-        /*
-         * البيانات هنا يجب أن تكون:
-         * الأقدم ← الأحدث
-         *
-         * لذلك ننسخ القائمة ونرتبها زمنيًا
-         * بدون التأثير على القائمة الأصلية.
-         */
-
+        // توحيد البيانات: الأقدم ← الأحدث
         List<HistoricalGoldProvider.GoldBar> data =
                 new ArrayList<>(bars);
 
         Collections.sort(
                 data,
-                (a, b) ->
-                        a.date.compareTo(b.date)
+                (a, b) -> a.date.compareTo(b.date)
         );
-
-        double latestClose =
-                data.get(
-                        data.size() - 1
-                ).close;
 
         double ema5 =
                 calculateEMA(data, 5);
@@ -50,72 +37,108 @@ public class PredictionEngine {
         double ema10 =
                 calculateEMA(data, 10);
 
+        double ema20 =
+                calculateEMA(data, 20);
+
         double rsi =
                 calculateRSI(data, 14);
 
-        double momentum =
-                calculateMomentum(data);
+        double momentum1 =
+                calculateMomentum(data, 1);
+
+        double momentum3 =
+                calculateMomentum(data, 3);
+
+        double momentum5 =
+                calculateMomentum(data, 5);
 
         double volatility =
-                calculateVolatility(data);
+                calculateVolatility(data, 14);
 
-        int score = 0;
+        /*
+         * ==========================
+         * نظام التحليل متعدد العوامل
+         * ==========================
+         */
 
-        // EMA Trend
+        double score = 0;
+
+        // الاتجاه قصير المدى
         if (ema5 > ema10) {
-
-            score += 2;
-
-        } else if (ema5 < ema10) {
-
-            score -= 2;
+            score += 2.0;
+        } else {
+            score -= 2.0;
         }
 
-        // السعر بالنسبة للـ EMA
+        // الاتجاه المتوسط
+        if (ema10 > ema20) {
+            score += 2.0;
+        } else {
+            score -= 2.0;
+        }
+
+        // السعر الحالي بالنسبة للـ EMA
         if (currentPrice > ema5) {
-
-            score += 1;
-
-        } else if (currentPrice < ema5) {
-
-            score -= 1;
+            score += 1.0;
+        } else {
+            score -= 1.0;
         }
 
         // RSI
         if (rsi >= 55 && rsi < 70) {
 
-            score += 2;
+            score += 1.5;
+
+        } else if (rsi > 45 && rsi < 55) {
+
+            score += 0;
 
         } else if (rsi > 30 && rsi <= 45) {
 
-            score -= 2;
+            score -= 1.5;
 
         } else if (rsi >= 70) {
 
-            score -= 1;
+            // تشبع شرائي
+            score -= 1.0;
 
         } else if (rsi <= 30) {
 
-            score += 1;
+            // تشبع بيعي
+            score += 1.0;
         }
 
-        // Momentum
-        if (momentum > 0.003) {
+        // الزخم القصير
+        score += momentumScore(
+                momentum1,
+                2.0
+        );
 
-            score += 2;
+        // الزخم المتوسط
+        score += momentumScore(
+                momentum3,
+                2.0
+        );
 
-        } else if (momentum < -0.003) {
+        // الزخم الأطول
+        score += momentumScore(
+                momentum5,
+                2.0
+        );
 
-            score -= 2;
-        }
+        /*
+         * ==========================
+         * تحديد الاتجاه
+         * ==========================
+         */
 
         String direction;
 
-        if (score >= 3) {
+        if (score >= 3.0) {
 
             direction = "صعود ↑";
 
-        } else if (score <= -3) {
+        } else if (score <= -3.0) {
 
             direction = "هبوط ↓";
 
@@ -125,48 +148,104 @@ public class PredictionEngine {
         }
 
         /*
-         * التوقع السعري يعتمد على الزخم الأخير.
+         * ==========================
+         * التوقع السعري
+         * ==========================
+         *
+         * لا نعتمد على آخر حركة فقط.
+         * نستخدم عدة فترات زمنية.
          */
 
-        double adjustedMomentum =
-                momentum;
+        double forecastReturn =
+                (
+                        momentum1 * 0.20
+                                +
+                        momentum3 * 0.30
+                                +
+                        momentum5 * 0.35
+                                +
+                        trendReturn(
+                                currentPrice,
+                                ema10
+                        ) * 0.15
+                );
 
-        if (volatility > 0.05) {
+        /*
+         * تأثير RSI على التوقع.
+         */
 
-            adjustedMomentum *= 0.70;
-        }
+        if (rsi > 70) {
 
-        if (volatility > 0.08) {
+            forecastReturn -= 0.0025;
 
-            adjustedMomentum *= 0.50;
-        }
+        } else if (rsi < 30) {
 
-        // الحد الأقصى للتوقع اليومي
-        if (adjustedMomentum > 0.02) {
-
-            adjustedMomentum = 0.02;
-        }
-
-        if (adjustedMomentum < -0.02) {
-
-            adjustedMomentum = -0.02;
+            forecastReturn += 0.0025;
         }
 
         /*
-         * نستخدم السعر الحالي الحقيقي
-         * للتوقع وليس latestClose القديم.
+         * إذا كانت المؤشرات متفقة،
+         * نسمح للتوقع بالحركة بشكل أكبر قليلًا.
          */
+
+        double agreement =
+                Math.abs(score);
+
+        if (agreement >= 7) {
+
+            forecastReturn *= 1.15;
+
+        } else if (agreement <= 2) {
+
+            forecastReturn *= 0.65;
+        }
+
+        /*
+         * التقلب العالي يقلل حجم التوقع.
+         */
+
+        if (volatility > 0.04) {
+
+            forecastReturn *= 0.85;
+        }
+
+        if (volatility > 0.07) {
+
+            forecastReturn *= 0.70;
+        }
+
+        /*
+         * منع التوقعات المبالغ فيها.
+         */
+
+        if (forecastReturn > 0.03) {
+
+            forecastReturn = 0.03;
+        }
+
+        if (forecastReturn < -0.03) {
+
+            forecastReturn = -0.03;
+        }
 
         double predictedPrice =
                 currentPrice *
-                        (1.0 + adjustedMomentum);
+                        (1.0 + forecastReturn);
+
+        /*
+         * ==========================
+         * حساب الثقة
+         * ==========================
+         */
 
         double confidence =
                 calculateConfidence(
                         score,
                         rsi,
                         volatility,
-                        momentum
+                        momentum1,
+                        momentum3,
+                        momentum5
                 );
 
         return new PredictionResult(
@@ -176,6 +255,12 @@ public class PredictionEngine {
                 confidence
         );
     }
+
+    /*
+     * ==========================
+     * EMA
+     * ==========================
+     */
 
     private double calculateEMA(
             List<HistoricalGoldProvider.GoldBar> bars,
@@ -217,6 +302,12 @@ public class PredictionEngine {
 
         return ema;
     }
+
+    /*
+     * ==========================
+     * RSI
+     * ==========================
+     */
 
     private double calculateRSI(
             List<HistoricalGoldProvider.GoldBar> bars,
@@ -277,27 +368,38 @@ public class PredictionEngine {
         }
 
         double rs =
-                averageGain / averageLoss;
+                averageGain /
+                        averageLoss;
 
         return 100 -
                 (100 / (1 + rs));
     }
 
-    private double calculateMomentum(
-            List<HistoricalGoldProvider.GoldBar> bars) {
+    /*
+     * ==========================
+     * Momentum
+     * ==========================
+     */
 
-        if (bars.size() < 2) {
+    private double calculateMomentum(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
+
+        if (bars.size() <= period) {
             return 0;
         }
 
+        int latestIndex =
+                bars.size() - 1;
+
         double latest =
                 bars.get(
-                        bars.size() - 1
+                        latestIndex
                 ).close;
 
         double previous =
                 bars.get(
-                        bars.size() - 2
+                        latestIndex - period
                 ).close;
 
         if (previous == 0) {
@@ -309,12 +411,60 @@ public class PredictionEngine {
                         / previous;
     }
 
+    /*
+     * ==========================
+     * Trend Return
+     * ==========================
+     */
+
+    private double trendReturn(
+            double currentPrice,
+            double ema) {
+
+        if (ema == 0) {
+            return 0;
+        }
+
+        return
+                (currentPrice - ema)
+                        / ema;
+    }
+
+    /*
+     * ==========================
+     * Momentum Score
+     * ==========================
+     */
+
+    private double momentumScore(
+            double momentum,
+            double weight) {
+
+        if (momentum > 0.003) {
+
+            return weight;
+
+        } else if (momentum < -0.003) {
+
+            return -weight;
+        }
+
+        return 0;
+    }
+
+    /*
+     * ==========================
+     * Volatility
+     * ==========================
+     */
+
     private double calculateVolatility(
-            List<HistoricalGoldProvider.GoldBar> bars) {
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
 
         int count =
                 Math.min(
-                        10,
+                        period,
                         bars.size()
                 );
 
@@ -362,41 +512,82 @@ public class PredictionEngine {
                         / average;
     }
 
+    /*
+     * ==========================
+     * Confidence
+     * ==========================
+     */
+
     private double calculateConfidence(
-            int score,
+            double score,
             double rsi,
             double volatility,
-            double momentum) {
+            double momentum1,
+            double momentum3,
+            double momentum5) {
 
         double confidence = 50;
 
-        if (Math.abs(score) >= 5) {
+        /*
+         * قوة اتفاق المؤشرات
+         */
 
-            confidence += 15;
+        if (Math.abs(score) >= 9) {
 
-        } else if (Math.abs(score) >= 3) {
+            confidence += 18;
+
+        } else if (Math.abs(score) >= 7) {
+
+            confidence += 13;
+
+        } else if (Math.abs(score) >= 5) {
 
             confidence += 8;
 
-        } else if (Math.abs(score) <= 1) {
+        } else if (Math.abs(score) <= 2) {
+
+            confidence -= 8;
+        }
+
+        /*
+         * اتفاق الزخم بين الفترات.
+         */
+
+        boolean momentumAgreement =
+                (
+                        momentum1 > 0 &&
+                        momentum3 > 0 &&
+                        momentum5 > 0
+                )
+                ||
+                (
+                        momentum1 < 0 &&
+                        momentum3 < 0 &&
+                        momentum5 < 0
+                );
+
+        if (momentumAgreement) {
+
+            confidence += 7;
+        }
+
+        /*
+         * التقلب العالي يقلل الثقة.
+         */
+
+        if (volatility > 0.04) {
 
             confidence -= 5;
         }
 
-        if (Math.abs(momentum) >= 0.005) {
-
-            confidence += 5;
-        }
-
-        if (volatility > 0.05) {
-
-            confidence -= 5;
-        }
-
-        if (volatility > 0.08) {
+        if (volatility > 0.07) {
 
             confidence -= 10;
         }
+
+        /*
+         * RSI المتطرف يقلل الثقة قليلًا.
+         */
 
         if (rsi >= 75 ||
                 rsi <= 25) {
@@ -404,16 +595,24 @@ public class PredictionEngine {
             confidence -= 5;
         }
 
-        if (confidence > 80) {
-            confidence = 80;
+        if (confidence > 85) {
+
+            confidence = 85;
         }
 
         if (confidence < 20) {
+
             confidence = 20;
         }
 
         return confidence;
     }
+
+    /*
+     * ==========================
+     * Prediction Result
+     * ==========================
+     */
 
     public static class PredictionResult {
 
