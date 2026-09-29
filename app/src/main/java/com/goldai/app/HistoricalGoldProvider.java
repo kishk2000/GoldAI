@@ -4,28 +4,24 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
 public class HistoricalGoldProvider {
 
     private static final String API_URL =
-            "https://xaus.com/api/v1/history?range=1y";
+            "https://api.goldprice.dev/v1/bars";
 
     public interface Callback {
 
-        void onSuccess(
-                List<GoldBar> bars
-        );
+        void onSuccess(List<GoldBar> bars);
 
-        void onError(
-                String error
-        );
+        void onError(String error);
     }
 
     public static class GoldBar {
@@ -61,8 +57,26 @@ public class HistoricalGoldProvider {
 
             try {
 
+                LocalDate today =
+                        LocalDate.now(
+                                ZoneOffset.UTC
+                        );
+
+                LocalDate from =
+                        today.minusDays(30);
+
+                String urlString =
+                        API_URL
+                                + "?symbol=XAU-USD-SPOT"
+                                + "&interval=1d"
+                                + "&from="
+                                + from
+                                + "&to="
+                                + today
+                                + "&limit=30";
+
                 URL url =
-                        new URL(API_URL);
+                        new URL(urlString);
 
                 connection =
                         (HttpURLConnection)
@@ -70,131 +84,103 @@ public class HistoricalGoldProvider {
 
                 connection.setRequestMethod("GET");
 
-                connection.setConnectTimeout(20000);
+                connection.setConnectTimeout(15000);
 
-                connection.setReadTimeout(20000);
-
-                connection.setUseCaches(false);
-
-                connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                );
+                connection.setReadTimeout(15000);
 
                 int responseCode =
                         connection.getResponseCode();
 
-                InputStream inputStream;
-
-                if (responseCode >= 200 &&
-                        responseCode < 300) {
-
-                    inputStream =
-                            connection.getInputStream();
-
-                } else {
-
-                    inputStream =
-                            connection.getErrorStream();
-                }
-
-                String responseText =
-                        readStream(inputStream);
-
                 if (responseCode != 200) {
 
                     callback.onError(
-                            "HTTP "
+                            "خطأ في البيانات التاريخية: "
                                     + responseCode
-                                    + "\n"
-                                    + responseText
                     );
 
                     return;
                 }
 
-                if (responseText == null ||
-                        responseText.trim().isEmpty()) {
+                BufferedReader reader =
+                        new BufferedReader(
+                                new InputStreamReader(
+                                        connection.getInputStream()
+                                )
+                        );
 
-                    callback.onError(
-                            "السيرفر رجع استجابة فارغة"
-                    );
+                StringBuilder result =
+                        new StringBuilder();
 
-                    return;
+                String line;
+
+                while ((line = reader.readLine()) != null) {
+
+                    result.append(line);
                 }
+
+                reader.close();
 
                 JSONObject root =
                         new JSONObject(
-                                responseText
+                                result.toString()
                         );
 
-                if (!root.has("points")) {
-
-                    callback.onError(
-                            "لا يوجد points في استجابة XAUS\n"
-                                    + responseText
-                    );
-
-                    return;
-                }
-
-                JSONArray points =
-                        root.getJSONArray("points");
+                JSONArray bars =
+                        root.getJSONArray("bars");
 
                 List<GoldBar> history =
                         new ArrayList<>();
 
-                for (
-                        int i = 0;
-                        i < points.length();
-                        i++
-                ) {
+                for (int i = 0;
+                     i < bars.length();
+                     i++) {
 
-                    JSONObject point =
-                            points.getJSONObject(i);
+                    JSONObject bar =
+                            bars.getJSONObject(i);
 
-                    if (!point.has("d") ||
-                            !point.has("c") ||
-                            !point.has("h") ||
-                            !point.has("l")) {
+                    boolean isClosed =
+                            bar.getBoolean(
+                                    "is_closed"
+                            );
 
+                    if (!isClosed) {
                         continue;
                     }
 
                     String date =
-                            point.getString("d");
+                            bar.getString(
+                                    "bar_start"
+                            );
 
-                    double close =
-                            point.getDouble("c");
+                    double open =
+                            bar.getDouble(
+                                    "open"
+                            );
 
                     double high =
-                            point.getDouble("h");
+                            bar.getDouble(
+                                    "high"
+                            );
 
                     double low =
-                            point.getDouble("l");
+                            bar.getDouble(
+                                    "low"
+                            );
+
+                    double close =
+                            bar.getDouble(
+                                    "close"
+                            );
 
                     history.add(
                             new GoldBar(
                                     date,
-                                    close,
+                                    open,
                                     high,
                                     low,
                                     close
                             )
                     );
-                }
-
-                if (history.size() < 20) {
-
-                    callback.onError(
-                            "تم الاتصال بنجاح، لكن عدد الأيام = "
-                                    + history.size()
-                                    + "\n\n"
-                                    + "بداية الاستجابة:\n"
-                                    + preview(responseText)
-                    );
-
-                    return;
                 }
 
                 callback.onSuccess(
@@ -204,73 +190,17 @@ public class HistoricalGoldProvider {
             } catch (Exception e) {
 
                 callback.onError(
-                        "نوع الخطأ: "
-                                + e.getClass()
-                                .getSimpleName()
-                                + "\n\n"
-                                + "الرسالة:\n"
+                        "فشل تحميل التاريخ: "
                                 + e.getMessage()
                 );
 
             } finally {
 
                 if (connection != null) {
-
                     connection.disconnect();
                 }
             }
 
         }).start();
-    }
-
-    private String readStream(
-            InputStream stream)
-            throws Exception {
-
-        if (stream == null) {
-            return "";
-        }
-
-        BufferedReader reader =
-                new BufferedReader(
-                        new InputStreamReader(
-                                stream,
-                                StandardCharsets.UTF_8
-                        )
-                );
-
-        StringBuilder result =
-                new StringBuilder();
-
-        String line;
-
-        while (
-                (line = reader.readLine())
-                        != null
-        ) {
-
-            result.append(line);
-        }
-
-        reader.close();
-
-        return result.toString();
-    }
-
-    private String preview(
-            String text) {
-
-        if (text == null) {
-            return "";
-        }
-
-        if (text.length() <= 500) {
-            return text;
-        }
-
-        return text.substring(
-                0,
-                500
-        );
     }
 }
