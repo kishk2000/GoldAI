@@ -43,12 +43,14 @@ public class BacktestEngine {
 
         double totalAbsoluteError = 0;
 
-        int predictedUp = 0;
-        int predictedDown = 0;
-        int predictedSideways = 0;
+        // عدد التوقعات لكل اتجاه
+        int predictedUpCount = 0;
+        int predictedDownCount = 0;
+        int predictedSidewaysCount = 0;
 
-        int correctUp = 0;
-        int correctDown = 0;
+        // عدد التوقعات الصحيحة
+        int correctUpCount = 0;
+        int correctDownCount = 0;
 
         for (
                 int i = 6;
@@ -83,57 +85,53 @@ public class BacktestEngine {
             double predictedPrice =
                     result.predictedPrice;
 
+            // الاتجاه الفعلي
             boolean actualUp =
                     actualNextPrice > currentPrice;
 
             boolean actualDown =
                     actualNextPrice < currentPrice;
 
-            boolean predictedUp =
+            // الاتجاه المتوقع
+            boolean isPredictedUp =
                     result.direction.contains(
                             "صعود"
                     );
 
-            boolean predictedDown =
+            boolean isPredictedDown =
                     result.direction.contains(
                             "هبوط"
                     );
 
-            boolean predictedSideways =
+            boolean isPredictedSideways =
                     result.direction.contains(
                             "عرضي"
                     );
 
-            /*
-             * عدد توقعات كل اتجاه
-             */
+            // حساب عدد توقعات كل اتجاه
+            if (isPredictedUp) {
 
-            if (predictedUp) {
+                predictedUpCount++;
 
-                predictedUp++;
+            } else if (isPredictedDown) {
 
-            } else if (predictedDown) {
+                predictedDownCount++;
 
-                predictedDown++;
+            } else if (isPredictedSideways) {
 
-            } else if (predictedSideways) {
-
-                predictedSideways++;
+                predictedSidewaysCount++;
             }
 
-            /*
-             * دقة الاتجاه
-             */
-
-            if (actualUp && predictedUp) {
+            // حساب الدقة
+            if (actualUp && isPredictedUp) {
 
                 correctTests++;
-                correctUp++;
+                correctUpCount++;
 
-            } else if (actualDown && predictedDown) {
+            } else if (actualDown && isPredictedDown) {
 
                 correctTests++;
-                correctDown++;
+                correctDownCount++;
 
             } else if (
                     Math.abs(
@@ -145,10 +143,7 @@ public class BacktestEngine {
                 correctTests++;
             }
 
-            /*
-             * خطأ السعر
-             */
-
+            // خطأ السعر
             double absoluteError =
                     Math.abs(
                             predictedPrice
@@ -184,16 +179,18 @@ public class BacktestEngine {
                 totalAbsoluteError
                         / totalTests;
 
+        // دقة توقع الصعود
         double upAccuracy =
-                predictedUp > 0
-                        ? (correctUp * 100.0)
-                        / predictedUp
+                predictedUpCount > 0
+                        ? (correctUpCount * 100.0)
+                        / predictedUpCount
                         : 0;
 
+        // دقة توقع الهبوط
         double downAccuracy =
-                predictedDown > 0
-                        ? (correctDown * 100.0)
-                        / predictedDown
+                predictedDownCount > 0
+                        ? (correctDownCount * 100.0)
+                        / predictedDownCount
                         : 0;
 
         return new BacktestResult(
@@ -201,9 +198,9 @@ public class BacktestEngine {
                 correctTests,
                 directionAccuracy,
                 averageAbsoluteError,
-                predictedUp,
-                predictedDown,
-                predictedSideways,
+                predictedUpCount,
+                predictedDownCount,
+                predictedSidewaysCount,
                 upAccuracy,
                 downAccuracy
         );
