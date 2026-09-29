@@ -12,8 +12,11 @@ import android.widget.TextView;
 
 import com.goldai.app.data.DataEngine;
 import com.goldai.app.data.XausProvider;
-import com.goldai.app.data.DemoProvider;
 import com.goldai.app.data.MarketData;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
 
@@ -24,7 +27,6 @@ public class MainActivity extends Activity {
     int green = Color.rgb(34, 197, 94);
 
     TextView price;
-    TextView change;
     TextView prediction;
     TextView confidence;
     TextView gold24;
@@ -34,13 +36,16 @@ public class MainActivity extends Activity {
 
     DataEngine dataEngine;
 
-    Handler handler = new Handler(Looper.getMainLooper());
+    Handler handler =
+            new Handler(Looper.getMainLooper());
 
     Runnable updateTask = new Runnable() {
+
         @Override
         public void run() {
 
-            dataEngine.update(new com.goldai.app.data.MarketDataProvider.Callback() {
+            dataEngine.update(
+                    new com.goldai.app.data.MarketDataProvider.Callback() {
 
                 @Override
                 public void onSuccess(MarketData data) {
@@ -48,32 +53,54 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
 
                         price.setText(
-                                String.format("$%.2f", data.goldUsd)
-                        );
-
-                        gold24.setText(
-                                String.format("عيار 24     %.0f جنيه", data.gold24)
-                        );
-
-                        gold21.setText(
-                                String.format("عيار 21     %.0f جنيه", data.gold21)
-                        );
-
-                        gold18.setText(
-                                String.format("عيار 18     %.0f جنيه", data.gold18)
-                        );
-
-                        prediction.setText(
                                 String.format(
-                                        "التوقع القادم: $%.0f",
+                                        Locale.US,
+                                        "$%.2f",
                                         data.goldUsd
                                 )
                         );
 
-                        confidence.setText("الثقة: تجريبية");
+                        prediction.setText(
+                                String.format(
+                                        Locale.US,
+                                        "السعر الحالي: $%.2f",
+                                        data.goldUsd
+                                )
+                        );
+
+                        confidence.setText(
+                                "الثقة: بيانات سوق حقيقية"
+                        );
+
+                        /*
+                         * الدولار لم يتم ربطه بعد،
+                         * لذلك لا نحسب أسعار السوق المصري الآن.
+                         */
+                        gold24.setText(
+                                "عيار 24     -- جنيه"
+                        );
+
+                        gold21.setText(
+                                "عيار 21     -- جنيه"
+                        );
+
+                        gold18.setText(
+                                "عيار 18     -- جنيه"
+                        );
+
+                        String updateTime =
+                                new SimpleDateFormat(
+                                        "HH:mm:ss",
+                                        Locale.getDefault()
+                                ).format(
+                                        new Date(data.timestamp)
+                                );
 
                         status.setText(
-                                "🟢 البيانات التجريبية تتحدث الآن"
+                                "🟢 آخر تحديث: "
+                                        + updateTime
+                                        + "\n"
+                                        + "تحديث تلقائي كل 30 ثانية"
                         );
                     });
                 }
@@ -82,36 +109,70 @@ public class MainActivity extends Activity {
                 public void onError(String error) {
 
                     runOnUiThread(() ->
-                            status.setText("🔴 خطأ: " + error)
+                            status.setText(
+                                    "🔴 تعذر تحديث البيانات\n"
+                                            + error
+                            )
                     );
                 }
             });
 
-            handler.postDelayed(this, 5000);
+            handler.postDelayed(
+                    this,
+                    30000
+            );
         }
     };
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(
+            Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
 
-        dataEngine = new DataEngine(
-        new XausProvider()
-);
+        dataEngine =
+                new DataEngine(
+                        new XausProvider()
+                );
 
-        LinearLayout main = new LinearLayout(this);
-        main.setOrientation(LinearLayout.VERTICAL);
-        main.setPadding(25, 35, 25, 30);
+        LinearLayout main =
+                new LinearLayout(this);
+
+        main.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        main.setPadding(
+                25, 35, 25, 30
+        );
+
         main.setBackgroundColor(dark);
 
-        TextView title = text("GOLD AI", 32, gold);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setGravity(Gravity.CENTER);
+        TextView title =
+                text(
+                        "GOLD AI",
+                        32,
+                        gold
+                );
+
+        title.setTypeface(
+                Typeface.DEFAULT_BOLD
+        );
+
+        title.setGravity(
+                Gravity.CENTER
+        );
 
         TextView subtitle =
-                text("تحليل وتوقع أسعار الذهب", 17, white);
+                text(
+                        "تحليل وتوقع أسعار الذهب",
+                        17,
+                        white
+                );
 
-        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setGravity(
+                Gravity.CENTER
+        );
 
         main.addView(title);
         main.addView(subtitle);
@@ -121,89 +182,155 @@ public class MainActivity extends Activity {
         LinearLayout priceCard = card();
 
         TextView priceTitle =
-                text("الذهب العالمي XAU/USD", 18, white);
+                text(
+                        "الذهب العالمي XAU/USD",
+                        18,
+                        white
+                );
 
-        price = text("$4,350.00", 34, gold);
-        price.setTypeface(Typeface.DEFAULT_BOLD);
+        price =
+                text(
+                        "$----.--",
+                        34,
+                        gold
+                );
 
-        change = text("↗ تحديث تلقائي", 18, green);
+        price.setTypeface(
+                Typeface.DEFAULT_BOLD
+        );
 
         priceCard.addView(priceTitle);
         priceCard.addView(price);
-        priceCard.addView(change);
 
         main.addView(priceCard);
 
         main.addView(space(15));
 
-        LinearLayout predictionCard = card();
+        LinearLayout predictionCard =
+                card();
 
         TextView predictionTitle =
-                text("🤖 التوقع اللحظي", 21, gold);
-
-        TextView direction =
-                text("↗ محرك التحليل يعمل", 25, green);
+                text(
+                        "🤖 تحليل السعر",
+                        21,
+                        gold
+                );
 
         prediction =
-                text("التوقع القادم: $4,350", 20, white);
+                text(
+                        "جاري تحميل السعر...",
+                        20,
+                        white
+                );
 
         confidence =
-                text("الثقة: تجريبية", 18, white);
+                text(
+                        "الثقة: --",
+                        18,
+                        white
+                );
 
-        predictionCard.addView(predictionTitle);
-        predictionCard.addView(direction);
-        predictionCard.addView(prediction);
-        predictionCard.addView(confidence);
+        predictionCard.addView(
+                predictionTitle
+        );
 
-        main.addView(predictionCard);
+        predictionCard.addView(
+                prediction
+        );
 
-        main.addView(space(15));
+        predictionCard.addView(
+                confidence
+        );
 
-        LinearLayout localCard = card();
+        main.addView(
+                predictionCard
+        );
+
+        main.addView(
+                space(15)
+        );
+
+        LinearLayout localCard =
+                card();
 
         localCard.addView(
-                text("🇪🇬 السوق المصري", 21, gold)
+                text(
+                        "🇪🇬 السوق المصري",
+                        21,
+                        gold
+                )
         );
 
         gold24 =
-                text("عيار 24     ---- جنيه", 19, white);
+                text(
+                        "عيار 24     -- جنيه",
+                        19,
+                        white
+                );
 
         gold21 =
-                text("عيار 21     ---- جنيه", 19, white);
+                text(
+                        "عيار 21     -- جنيه",
+                        19,
+                        white
+                );
 
         gold18 =
-                text("عيار 18     ---- جنيه", 19, white);
+                text(
+                        "عيار 18     -- جنيه",
+                        19,
+                        white
+                );
 
         localCard.addView(gold24);
         localCard.addView(gold21);
         localCard.addView(gold18);
 
-        main.addView(localCard);
+        main.addView(
+                localCard
+        );
 
-        main.addView(space(15));
+        main.addView(
+                space(15)
+        );
 
         status =
-                text("🟡 بدء محرك البيانات...", 16, white);
+                text(
+                        "🟡 جاري الاتصال بمصدر البيانات...",
+                        16,
+                        white
+                );
 
-        status.setGravity(Gravity.CENTER);
+        status.setGravity(
+                Gravity.CENTER
+        );
 
-        main.addView(status);
+        main.addView(
+                status
+        );
 
         setContentView(main);
 
+        /*
+         * أول تحديث يبدأ فور فتح التطبيق.
+         */
         handler.post(updateTask);
     }
 
     @Override
     protected void onDestroy() {
+
         super.onDestroy();
 
-        handler.removeCallbacks(updateTask);
+        handler.removeCallbacks(
+                updateTask
+        );
     }
 
     private LinearLayout card() {
 
-        LinearLayout layout = new LinearLayout(this);
+        LinearLayout layout =
+                new LinearLayout(this);
 
         layout.setOrientation(
                 LinearLayout.VERTICAL
@@ -223,7 +350,8 @@ public class MainActivity extends Activity {
             float size,
             int color) {
 
-        TextView view = new TextView(this);
+        TextView view =
+                new TextView(this);
 
         view.setText(value);
         view.setTextSize(size);
@@ -236,9 +364,11 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private TextView space(int height) {
+    private TextView space(
+            int height) {
 
-        TextView view = new TextView(this);
+        TextView view =
+                new TextView(this);
 
         view.setHeight(height);
 
