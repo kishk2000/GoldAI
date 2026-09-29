@@ -3,37 +3,120 @@ package com.goldai.app;
 import android.app.Activity;
 import android.os.Bundle;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
 
+    int gold = Color.rgb(212, 175, 55);
+    int dark = Color.rgb(15, 23, 42);
+    int card = Color.rgb(30, 41, 59);
+    int white = Color.WHITE;
+    int green = Color.rgb(34, 197, 94);
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setGravity(Gravity.CENTER);
-        layout.setPadding(30, 30, 30, 30);
-        layout.setBackgroundColor(Color.rgb(15, 23, 42));
+        LinearLayout main = new LinearLayout(this);
+        main.setOrientation(LinearLayout.VERTICAL);
+        main.setPadding(25, 35, 25, 30);
+        main.setBackgroundColor(dark);
 
-        TextView title = new TextView(this);
-        title.setText("GOLD AI");
-        title.setTextColor(Color.rgb(255, 215, 70));
-        title.setTextSize(32);
+        TextView title = text("GOLD AI", 32, gold);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.CENTER);
 
-        TextView status = new TextView(this);
-        status.setText("\nتحليل الذهب بالذكاء الاصطناعي\n\nجاري تجهيز محرك البيانات...");
-        status.setTextColor(Color.WHITE);
-        status.setTextSize(20);
+        TextView subtitle = text("تحليل وتوقع أسعار الذهب", 17, white);
+        subtitle.setGravity(Gravity.CENTER);
+
+        main.addView(title);
+        main.addView(subtitle);
+
+        main.addView(space(25));
+
+        LinearLayout priceCard = card();
+
+        TextView priceTitle = text("الذهب العالمي XAU/USD", 18, white);
+        TextView price = text("$4,xxx.xx", 34, gold);
+        price.setTypeface(Typeface.DEFAULT_BOLD);
+
+        TextView change = text("↗ +0.00%", 18, green);
+
+        priceCard.addView(priceTitle);
+        priceCard.addView(price);
+        priceCard.addView(change);
+
+        main.addView(priceCard);
+
+        main.addView(space(15));
+
+        LinearLayout predictionCard = card();
+
+        TextView predictionTitle =
+                text("🤖 التوقع اللحظي", 21, gold);
+
+        TextView direction =
+                text("↗ اتجاه صاعد", 25, green);
+
+        TextView prediction =
+                text("التوقع القادم: $4,xxx", 20, white);
+
+        TextView confidence =
+                text("الثقة: --%", 18, white);
+
+        predictionCard.addView(predictionTitle);
+        predictionCard.addView(direction);
+        predictionCard.addView(prediction);
+        predictionCard.addView(confidence);
+
+        main.addView(predictionCard);
+
+        main.addView(space(15));
+
+        LinearLayout localCard = card();
+
+        localCard.addView(text("🇪🇬 السوق المصري", 21, gold));
+        localCard.addView(text("عيار 24     ---- جنيه", 19, white));
+        localCard.addView(text("عيار 21     ---- جنيه", 19, white));
+        localCard.addView(text("عيار 18     ---- جنيه", 19, white));
+
+        main.addView(localCard);
+
+        main.addView(space(15));
+
+        TextView status =
+                text("🟡 في انتظار البيانات اللحظية", 16, white);
+
         status.setGravity(Gravity.CENTER);
 
-        layout.addView(title);
-        layout.addView(status);
+        main.addView(status);
 
-        setContentView(layout);
+        setContentView(main);
+    }
+
+    private LinearLayout card() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(25, 22, 25, 22);
+        layout.setBackgroundColor(card);
+        return layout;
+    }
+
+    private TextView text(String value, float size, int color) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        view.setPadding(0, 5, 0, 5);
+        return view;
+    }
+
+    private TextView space(int height) {
+        TextView view = new TextView(this);
+        view.setHeight(height);
+        return view;
     }
 }
