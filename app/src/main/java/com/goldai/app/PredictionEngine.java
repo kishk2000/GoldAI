@@ -8,6 +8,15 @@ import java.util.List;
 
 public class PredictionEngine {
 
+    /*
+     * حد تصنيف الاتجاه:
+     *
+     * +0.30% أو أكثر = صعود
+     * -0.30% أو أقل = هبوط
+     * بينهما        = عرضي
+     */
+    private static final double DIRECTION_THRESHOLD = 0.0030;
+
     public PredictionResult analyze(
             double currentPrice,
             List<HistoricalGoldProvider.GoldBar> bars) {
@@ -22,7 +31,6 @@ public class PredictionEngine {
             );
         }
 
-        // توحيد البيانات: الأقدم ← الأحدث
         List<HistoricalGoldProvider.GoldBar> data =
                 new ArrayList<>(bars);
 
@@ -30,6 +38,12 @@ public class PredictionEngine {
                 data,
                 (a, b) -> a.date.compareTo(b.date)
         );
+
+        /*
+         * =========================
+         * 1. المؤشرات الأساسية
+         * =========================
+         */
 
         double ema5 =
                 calculateEMA(data, 5);
@@ -39,6 +53,9 @@ public class PredictionEngine {
 
         double ema20 =
                 calculateEMA(data, 20);
+
+        double ema30 =
+                calculateEMA(data, 30);
 
         double rsi =
                 calculateRSI(data, 14);
@@ -52,200 +69,263 @@ public class PredictionEngine {
         double momentum5 =
                 calculateMomentum(data, 5);
 
+        double momentum10 =
+                calculateMomentum(data, 10);
+
         double volatility =
                 calculateVolatility(data, 14);
 
         /*
-         * ==========================
-         * نظام التحليل متعدد العوامل
-         * ==========================
+         * =========================
+         * 2. الاتجاه العام
+         * =========================
          */
 
-        double score = 0;
+        double trendShort =
+                calculateReturn(
+                        ema5,
+                        ema10
+                );
 
-        // الاتجاه قصير المدى
-        if (ema5 > ema10) {
-            score += 2.0;
-        } else {
-            score -= 2.0;
-        }
+        double trendMedium =
+                calculateReturn(
+                        ema10,
+                        ema20
+                );
 
-        // الاتجاه المتوسط
-        if (ema10 > ema20) {
-            score += 2.0;
-        } else {
-            score -= 2.0;
-        }
+        double trendLong =
+                calculateReturn(
+                        ema20,
+                        ema30
+                );
 
-        // السعر الحالي بالنسبة للـ EMA
-        if (currentPrice > ema5) {
-            score += 1.0;
-        } else {
-            score -= 1.0;
-        }
+        /*
+         * ميل آخر 10 أيام
+         */
+        double slope10 =
+                calculateSlope(
+                        data,
+                        10
+                );
 
-        // RSI
+        /*
+         * =========================
+         * 3. حساب الزخم المركب
+         * =========================
+         */
+
+        double momentumScore =
+                (
+                        momentum1 * 0.10
+                                +
+                        momentum3 * 0.25
+                                +
+                        momentum5 * 0.35
+                                +
+                        momentum10 * 0.30
+                );
+
+        /*
+         * =========================
+         * 4. حساب الاتجاه المركب
+         * =========================
+         */
+
+        double trendScore =
+                (
+                        trendShort * 0.40
+                                +
+                        trendMedium * 0.35
+                                +
+                        trendLong * 0.25
+                );
+
+        /*
+         * =========================
+         * 5. تأثير السعر الحالي
+         * =========================
+         */
+
+        double priceVsEma20 =
+                calculateReturn(
+                        currentPrice,
+                        ema20
+                );
+
+        /*
+         * =========================
+         * 6. RSI
+         * =========================
+         *
+         * لا نتعامل مع RSI وحده.
+         * نستخدمه كعامل تصحيح.
+         */
+
+        double rsiAdjustment = 0;
+
         if (rsi >= 55 && rsi < 70) {
 
-            score += 1.5;
-
-        } else if (rsi > 45 && rsi < 55) {
-
-            score += 0;
-
-        } else if (rsi > 30 && rsi <= 45) {
-
-            score -= 1.5;
+            rsiAdjustment = 0.0015;
 
         } else if (rsi >= 70) {
 
-            // تشبع شرائي
-            score -= 1.0;
+            /*
+             * تشبع شرائي:
+             * نقلل التوقع الصاعد.
+             */
+            rsiAdjustment = -0.0015;
+
+        } else if (rsi > 30 && rsi <= 45) {
+
+            rsiAdjustment = -0.0010;
 
         } else if (rsi <= 30) {
 
-            // تشبع بيعي
-            score += 1.0;
-        }
-
-        // الزخم القصير
-        score += momentumScore(
-                momentum1,
-                2.0
-        );
-
-        // الزخم المتوسط
-        score += momentumScore(
-                momentum3,
-                2.0
-        );
-
-        // الزخم الأطول
-        score += momentumScore(
-                momentum5,
-                2.0
-        );
-
-        /*
-         * ==========================
-         * تحديد الاتجاه
-         * ==========================
-         */
-
-        String direction;
-
-        if (score >= 3.0) {
-
-            direction = "صعود ↑";
-
-        } else if (score <= -3.0) {
-
-            direction = "هبوط ↓";
-
-        } else {
-
-            direction = "عرضي ↔";
+            /*
+             * تشبع بيعي:
+             * احتمال ارتداد.
+             */
+            rsiAdjustment = 0.0015;
         }
 
         /*
-         * ==========================
-         * التوقع السعري
-         * ==========================
-         *
-         * لا نعتمد على آخر حركة فقط.
-         * نستخدم عدة فترات زمنية.
+         * =========================
+         * 7. دمج الإشارات
+         * =========================
          */
 
         double forecastReturn =
                 (
-                        momentum1 * 0.20
+                        momentumScore * 0.45
                                 +
-                        momentum3 * 0.30
+                        trendScore * 0.30
                                 +
-                        momentum5 * 0.35
+                        priceVsEma20 * 0.10
                                 +
-                        trendReturn(
-                                currentPrice,
-                                ema10
-                        ) * 0.15
+                        slope10 * 0.15
                 );
 
         /*
-         * تأثير RSI على التوقع.
+         * إضافة تأثير RSI.
          */
-
-        if (rsi > 70) {
-
-            forecastReturn -= 0.0025;
-
-        } else if (rsi < 30) {
-
-            forecastReturn += 0.0025;
-        }
+        forecastReturn +=
+                rsiAdjustment;
 
         /*
-         * إذا كانت المؤشرات متفقة،
-         * نسمح للتوقع بالحركة بشكل أكبر قليلًا.
+         * =========================
+         * 8. فلتر التذبذب
+         * =========================
+         *
+         * في الأسواق شديدة التذبذب
+         * نقلل حجم التوقع بدل تضخيمه.
          */
 
-        double agreement =
-                Math.abs(score);
+        if (volatility > 0.035) {
 
-        if (agreement >= 7) {
-
-            forecastReturn *= 1.15;
-
-        } else if (agreement <= 2) {
-
-            forecastReturn *= 0.65;
+            forecastReturn *= 0.90;
         }
 
-        /*
-         * التقلب العالي يقلل حجم التوقع.
-         */
+        if (volatility > 0.050) {
 
-        if (volatility > 0.04) {
-
-            forecastReturn *= 0.85;
+            forecastReturn *= 0.80;
         }
 
-        if (volatility > 0.07) {
+        if (volatility > 0.070) {
 
             forecastReturn *= 0.70;
         }
 
         /*
-         * منع التوقعات المبالغ فيها.
+         * =========================
+         * 9. الحد الأقصى للتوقع
+         * =========================
+         *
+         * حتى لا يعطي النموذج قفزات
+         * غير منطقية.
          */
 
-        if (forecastReturn > 0.03) {
+        if (forecastReturn > 0.025) {
 
-            forecastReturn = 0.03;
+            forecastReturn = 0.025;
         }
 
-        if (forecastReturn < -0.03) {
+        if (forecastReturn < -0.025) {
 
-            forecastReturn = -0.03;
+            forecastReturn = -0.025;
         }
+
+        /*
+         * =========================
+         * 10. السعر المتوقع
+         * =========================
+         */
 
         double predictedPrice =
                 currentPrice *
                         (1.0 + forecastReturn);
 
         /*
-         * ==========================
-         * حساب الثقة
-         * ==========================
+         * =========================
+         * 11. تحديد الاتجاه
+         * =========================
+         *
+         * أصبح متوافقًا مع Backtest:
+         *
+         * >= +0.30% صعود
+         * <= -0.30% هبوط
+         * غير ذلك عرضي
+         */
+
+        String direction;
+
+        if (forecastReturn >=
+                DIRECTION_THRESHOLD) {
+
+            direction =
+                    "صعود ↑";
+
+        } else if (forecastReturn <=
+                -DIRECTION_THRESHOLD) {
+
+            direction =
+                    "هبوط ↓";
+
+        } else {
+
+            direction =
+                    "عرضي ↔";
+        }
+
+        /*
+         * =========================
+         * 12. حساب قوة الإشارات
+         * =========================
+         */
+
+        double agreement =
+                calculateAgreement(
+                        momentum1,
+                        momentum3,
+                        momentum5,
+                        momentum10,
+                        trendShort,
+                        trendMedium,
+                        trendLong
+                );
+
+        /*
+         * =========================
+         * 13. الثقة
+         * =========================
          */
 
         double confidence =
                 calculateConfidence(
-                        score,
+                        direction,
+                        forecastReturn,
                         rsi,
                         volatility,
-                        momentum1,
-                        momentum3,
-                        momentum5
+                        agreement
                 );
 
         return new PredictionResult(
@@ -257,9 +337,9 @@ public class PredictionEngine {
     }
 
     /*
-     * ==========================
+     * =========================
      * EMA
-     * ==========================
+     * =========================
      */
 
     private double calculateEMA(
@@ -287,16 +367,20 @@ public class PredictionEngine {
         double multiplier =
                 2.0 / (count + 1.0);
 
-        for (int i = start + 1;
-             i < bars.size();
-             i++) {
+        for (
+                int i = start + 1;
+                i < bars.size();
+                i++
+        ) {
 
             double close =
                     bars.get(i).close;
 
             ema =
-                    (close - ema)
-                            * multiplier
+                    (
+                            (close - ema)
+                                    * multiplier
+                    )
                             + ema;
         }
 
@@ -304,9 +388,9 @@ public class PredictionEngine {
     }
 
     /*
-     * ==========================
+     * =========================
      * RSI
-     * ==========================
+     * =========================
      */
 
     private double calculateRSI(
@@ -314,6 +398,7 @@ public class PredictionEngine {
             int period) {
 
         if (bars.size() < 2) {
+
             return 50;
         }
 
@@ -329,9 +414,11 @@ public class PredictionEngine {
         int start =
                 bars.size() - period;
 
-        for (int i = start;
-             i < bars.size();
-             i++) {
+        for (
+                int i = start;
+                i < bars.size();
+                i++
+        ) {
 
             double current =
                     bars.get(i).close;
@@ -361,6 +448,7 @@ public class PredictionEngine {
         if (averageLoss == 0) {
 
             if (averageGain == 0) {
+
                 return 50;
             }
 
@@ -372,13 +460,16 @@ public class PredictionEngine {
                         averageLoss;
 
         return 100 -
-                (100 / (1 + rs));
+                (
+                        100 /
+                                (1 + rs)
+                );
     }
 
     /*
-     * ==========================
+     * =========================
      * Momentum
-     * ==========================
+     * =========================
      */
 
     private double calculateMomentum(
@@ -386,6 +477,7 @@ public class PredictionEngine {
             int period) {
 
         if (bars.size() <= period) {
+
             return 0;
         }
 
@@ -403,59 +495,122 @@ public class PredictionEngine {
                 ).close;
 
         if (previous == 0) {
+
             return 0;
         }
 
-        return
-                (latest - previous)
-                        / previous;
+        return (
+                latest - previous
+        ) / previous;
     }
 
     /*
-     * ==========================
-     * Trend Return
-     * ==========================
+     * =========================
+     * Return
+     * =========================
      */
 
-    private double trendReturn(
-            double currentPrice,
-            double ema) {
+    private double calculateReturn(
+            double current,
+            double previous) {
 
-        if (ema == 0) {
+        if (previous == 0) {
+
             return 0;
         }
 
-        return
-                (currentPrice - ema)
-                        / ema;
+        return (
+                current - previous
+        ) / previous;
     }
 
     /*
-     * ==========================
-     * Momentum Score
-     * ==========================
+     * =========================
+     * ميل السعر
+     * =========================
      */
 
-    private double momentumScore(
-            double momentum,
-            double weight) {
+    private double calculateSlope(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int period) {
 
-        if (momentum > 0.003) {
+        if (bars == null ||
+                bars.size() < 2) {
 
-            return weight;
-
-        } else if (momentum < -0.003) {
-
-            return -weight;
+            return 0;
         }
 
-        return 0;
+        int count =
+                Math.min(
+                        period,
+                        bars.size()
+                );
+
+        int start =
+                bars.size() - count;
+
+        double sumX = 0;
+        double sumY = 0;
+        double sumXY = 0;
+        double sumXX = 0;
+
+        for (
+                int i = 0;
+                i < count;
+                i++
+        ) {
+
+            double x = i;
+
+            double y =
+                    bars.get(
+                            start + i
+                    ).close;
+
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumXX += x * x;
+        }
+
+        double denominator =
+                count * sumXX
+                        - sumX * sumX;
+
+        if (denominator == 0) {
+
+            return 0;
+        }
+
+        double slope =
+                (
+                        count * sumXY
+                                - sumX * sumY
+                )
+                        / denominator;
+
+        double average =
+                sumY / count;
+
+        if (average == 0) {
+
+            return 0;
+        }
+
+        /*
+         * نحول الميل إلى نسبة تقريبية
+         * خلال الفترة.
+         */
+
+        return slope *
+                (count - 1)
+                / average;
     }
 
     /*
-     * ==========================
+     * =========================
      * Volatility
-     * ==========================
+     * =========================
      */
 
     private double calculateVolatility(
@@ -469,124 +624,225 @@ public class PredictionEngine {
                 );
 
         if (count < 2) {
+
             return 0;
         }
+
+        /*
+         * نحسب التذبذب من العوائد اليومية
+         * بدل فرق الأسعار الخام.
+         */
 
         int start =
                 bars.size() - count;
 
-        double average = 0;
+        double sumReturns = 0;
 
-        for (int i = start;
-             i < bars.size();
-             i++) {
+        int returnCount = 0;
 
-            average +=
+        for (
+                int i = start + 1;
+                i < bars.size();
+                i++
+        ) {
+
+            double previous =
+                    bars.get(i - 1).close;
+
+            double current =
                     bars.get(i).close;
+
+            if (previous == 0) {
+
+                continue;
+            }
+
+            double dailyReturn =
+                    (
+                            current - previous
+                    ) / previous;
+
+            sumReturns +=
+                    dailyReturn;
+
+            returnCount++;
         }
 
-        average /= count;
+        if (returnCount < 2) {
 
-        if (average == 0) {
             return 0;
         }
 
+        double averageReturn =
+                sumReturns /
+                        returnCount;
+
         double variance = 0;
 
-        for (int i = start;
-             i < bars.size();
-             i++) {
+        for (
+                int i = start + 1;
+                i < bars.size();
+                i++
+        ) {
+
+            double previous =
+                    bars.get(i - 1).close;
+
+            double current =
+                    bars.get(i).close;
+
+            if (previous == 0) {
+
+                continue;
+            }
+
+            double dailyReturn =
+                    (
+                            current - previous
+                    ) / previous;
 
             double difference =
-                    bars.get(i).close
-                            - average;
+                    dailyReturn
+                            - averageReturn;
 
             variance +=
-                    difference * difference;
+                    difference *
+                            difference;
         }
 
-        variance /= count;
+        variance /=
+                returnCount;
 
-        return
-                Math.sqrt(variance)
-                        / average;
+        return Math.sqrt(
+                variance
+        );
     }
 
     /*
-     * ==========================
+     * =========================
+     * اتفاق المؤشرات
+     * =========================
+     */
+
+    private double calculateAgreement(
+            double momentum1,
+            double momentum3,
+            double momentum5,
+            double momentum10,
+            double trendShort,
+            double trendMedium,
+            double trendLong) {
+
+        int positive = 0;
+        int negative = 0;
+
+        double[] values = {
+
+                momentum1,
+                momentum3,
+                momentum5,
+                momentum10,
+
+                trendShort,
+                trendMedium,
+                trendLong
+        };
+
+        for (double value : values) {
+
+            if (value > 0.001) {
+
+                positive++;
+
+            } else if (value < -0.001) {
+
+                negative++;
+            }
+        }
+
+        int total =
+                positive + negative;
+
+        if (total == 0) {
+
+            return 0;
+        }
+
+        return Math.abs(
+                positive - negative
+        ) / (double) total;
+    }
+
+    /*
+     * =========================
      * Confidence
-     * ==========================
+     * =========================
      */
 
     private double calculateConfidence(
-            double score,
+            String direction,
+            double forecastReturn,
             double rsi,
             double volatility,
-            double momentum1,
-            double momentum3,
-            double momentum5) {
+            double agreement) {
 
         double confidence = 50;
 
         /*
-         * قوة اتفاق المؤشرات
+         * قوة الإشارة المتوقعة.
          */
 
-        if (Math.abs(score) >= 9) {
+        double magnitude =
+                Math.abs(
+                        forecastReturn
+                );
 
-            confidence += 18;
+        if (magnitude >= 0.015) {
 
-        } else if (Math.abs(score) >= 7) {
+            confidence += 12;
 
-            confidence += 13;
+        } else if (magnitude >= 0.010) {
 
-        } else if (Math.abs(score) >= 5) {
+            confidence += 9;
 
-            confidence += 8;
+        } else if (magnitude >= 0.005) {
 
-        } else if (Math.abs(score) <= 2) {
+            confidence += 5;
+
+        } else if (magnitude < 0.002) {
+
+            confidence -= 5;
+        }
+
+        /*
+         * اتفاق المؤشرات.
+         */
+
+        confidence +=
+                agreement * 12;
+
+        /*
+         * التذبذب العالي يقلل الثقة.
+         */
+
+        if (volatility > 0.035) {
+
+            confidence -= 5;
+        }
+
+        if (volatility > 0.050) {
+
+            confidence -= 7;
+        }
+
+        if (volatility > 0.070) {
 
             confidence -= 8;
         }
 
         /*
-         * اتفاق الزخم بين الفترات.
-         */
-
-        boolean momentumAgreement =
-                (
-                        momentum1 > 0 &&
-                        momentum3 > 0 &&
-                        momentum5 > 0
-                )
-                ||
-                (
-                        momentum1 < 0 &&
-                        momentum3 < 0 &&
-                        momentum5 < 0
-                );
-
-        if (momentumAgreement) {
-
-            confidence += 7;
-        }
-
-        /*
-         * التقلب العالي يقلل الثقة.
-         */
-
-        if (volatility > 0.04) {
-
-            confidence -= 5;
-        }
-
-        if (volatility > 0.07) {
-
-            confidence -= 10;
-        }
-
-        /*
-         * RSI المتطرف يقلل الثقة قليلًا.
+         * RSI شديد التطرف
+         * يقلل الثقة قليلًا.
          */
 
         if (rsi >= 75 ||
@@ -594,6 +850,22 @@ public class PredictionEngine {
 
             confidence -= 5;
         }
+
+        /*
+         * العرضي بطبيعته أقل ثقة
+         * عندما تكون الإشارة ضعيفة.
+         */
+
+        if (direction.equals(
+                "عرضي ↔"
+        )) {
+
+            confidence -= 3;
+        }
+
+        /*
+         * الحدود النهائية.
+         */
 
         if (confidence > 85) {
 
@@ -609,9 +881,9 @@ public class PredictionEngine {
     }
 
     /*
-     * ==========================
+     * =========================
      * Prediction Result
-     * ==========================
+     * =========================
      */
 
     public static class PredictionResult {
