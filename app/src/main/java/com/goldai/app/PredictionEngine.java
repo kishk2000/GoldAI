@@ -1,5 +1,7 @@
 package com.goldai.app;
 
+import com.goldai.app.data.HistoricalGoldProvider;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,12 +46,13 @@ public class PredictionEngine {
     }
 
     public PredictionResult analyze(
+            double currentPrice,
             List<HistoricalGoldProvider.GoldBar> bars) {
 
         if (bars == null || bars.size() < MIN_HISTORY) {
 
             return new PredictionResult(
-                    0,
+                    currentPrice,
                     "محايد",
                     40
             );
@@ -57,8 +60,9 @@ public class PredictionEngine {
 
         int currentIndex = bars.size() - 1;
 
-        double currentPrice =
-                bars.get(currentIndex).close;
+        if (currentPrice <= 0) {
+            currentPrice = bars.get(currentIndex).close;
+        }
 
         if (currentPrice <= 0) {
 
@@ -71,7 +75,7 @@ public class PredictionEngine {
 
         /*
          * ==========================================
-         * 1. Current technical score
+         * 1. Current technical scores
          * ==========================================
          */
 
@@ -191,6 +195,10 @@ public class PredictionEngine {
             double tomorrow =
                     bars.get(i + 1).close;
 
+            if (today <= 0) {
+                continue;
+            }
+
             double change =
                     (tomorrow - today)
                             / today;
@@ -236,8 +244,6 @@ public class PredictionEngine {
         /*
          * ==========================================
          * 5. Technical expected return
-         *
-         * هنا بنفصل حجم الحركة عن الاتجاه.
          * ==========================================
          */
 
@@ -250,13 +256,6 @@ public class PredictionEngine {
                             / ema20;
         }
 
-        /*
-         * Momentum contribution.
-         *
-         * 1D أقل وزنًا لأنه سريع جدًا.
-         * 5D أكبر لأنه يعبر عن الاتجاه الممتد.
-         */
-
         double technicalReturn =
                 momentum1 * 0.15
                         + momentum3 * 0.25
@@ -265,7 +264,7 @@ public class PredictionEngine {
 
 
         /*
-         * RSI adjustment.
+         * RSI adjustment
          */
 
         if (rsi < 32) {
@@ -287,7 +286,7 @@ public class PredictionEngine {
 
 
         /*
-         * Momentum acceleration.
+         * Momentum acceleration
          */
 
         double momentumAcceleration =
@@ -310,26 +309,38 @@ public class PredictionEngine {
         int bearishVotes = 0;
 
         if (trendScore > 0) {
+
             bullishVotes++;
+
         } else if (trendScore < 0) {
+
             bearishVotes++;
         }
 
         if (positionScore > 0) {
+
             bullishVotes++;
+
         } else if (positionScore < 0) {
+
             bearishVotes++;
         }
 
         if (momentumScore > 0) {
+
             bullishVotes++;
+
         } else if (momentumScore < 0) {
+
             bearishVotes++;
         }
 
         if (rsiScore > 0) {
+
             bullishVotes++;
+
         } else if (rsiScore < 0) {
+
             bearishVotes++;
         }
 
@@ -341,8 +352,8 @@ public class PredictionEngine {
 
 
         /*
-         * عندما المؤشرات مش متفقة،
-         * نقلل حجم التوقع بدل ما نغيّر الاتجاه عشوائيًا.
+         * تقليل حجم التوقع عندما تكون
+         * المؤشرات غير متفقة.
          */
 
         if (voteDifference <= 1) {
@@ -361,11 +372,8 @@ public class PredictionEngine {
 
         /*
          * ==========================================
-         * 7. Blend historical + technical
+         * 7. Historical + Technical
          * ==========================================
-         *
-         * بدل الاعتماد على التاريخ وحده،
-         * نستخدم الاثنين معًا.
          */
 
         double expectedReturn =
@@ -374,16 +382,23 @@ public class PredictionEngine {
 
 
         /*
-         * منع التوقعات المبالغ فيها.
+         * تقليل المبالغة في السعر المتوقع.
          */
 
         expectedReturn *= 0.45;
 
+
+        /*
+         * حد أقصى للحركة المتوقعة.
+         */
+
         if (expectedReturn > 0.03) {
+
             expectedReturn = 0.03;
         }
 
         if (expectedReturn < -0.03) {
+
             expectedReturn = -0.03;
         }
 
@@ -425,7 +440,7 @@ public class PredictionEngine {
 
 
         /*
-         * لو الاتجاه محايد، نقلل حجم الحركة.
+         * الاتجاه المحايد = توقع حركة أصغر.
          */
 
         if (direction.equals("محايد")) {
@@ -469,6 +484,7 @@ public class PredictionEngine {
         double rsiStrength = 0.0;
 
         if (rsi < 30 || rsi > 70) {
+
             rsiStrength = 0.15;
         }
 
@@ -479,15 +495,14 @@ public class PredictionEngine {
                         + movementStrength * 10.0
                         + rsiStrength * 10.0;
 
-        /*
-         * لا نريد ثقة 85% بسهولة.
-         */
 
         if (confidence > 85) {
+
             confidence = 85;
         }
 
         if (confidence < 40) {
+
             confidence = 40;
         }
 
@@ -543,7 +558,7 @@ public class PredictionEngine {
 
     /*
      * ==========================================
-     * Trend
+     * Trend score
      * ==========================================
      */
 
@@ -575,14 +590,20 @@ public class PredictionEngine {
         double score = 0.0;
 
         if (ema5 > ema10) {
+
             score += 1.5;
+
         } else {
+
             score -= 1.5;
         }
 
         if (ema10 > ema20) {
+
             score += 1.5;
+
         } else {
+
             score -= 1.5;
         }
 
@@ -592,7 +613,7 @@ public class PredictionEngine {
 
     /*
      * ==========================================
-     * Position
+     * Position score
      * ==========================================
      */
 
@@ -620,14 +641,20 @@ public class PredictionEngine {
         double score = 0.0;
 
         if (price > ema5) {
+
             score += 1.0;
+
         } else {
+
             score -= 1.0;
         }
 
         if (price > ema10) {
+
             score += 0.75;
+
         } else {
+
             score -= 0.75;
         }
 
@@ -637,7 +664,7 @@ public class PredictionEngine {
 
     /*
      * ==========================================
-     * Momentum
+     * Momentum score
      * ==========================================
      */
 
@@ -668,9 +695,23 @@ public class PredictionEngine {
 
         double score = 0.0;
 
-        score += momentumSignal(m1, 1.0);
-        score += momentumSignal(m3, 1.5);
-        score += momentumSignal(m5, 2.0);
+        score +=
+                momentumSignal(
+                        m1,
+                        1.0
+                );
+
+        score +=
+                momentumSignal(
+                        m3,
+                        1.5
+                );
+
+        score +=
+                momentumSignal(
+                        m5,
+                        2.0
+                );
 
         return score;
     }
@@ -699,7 +740,7 @@ public class PredictionEngine {
 
     /*
      * ==========================================
-     * RSI
+     * RSI score
      * ==========================================
      */
 
@@ -778,11 +819,13 @@ public class PredictionEngine {
         }
 
         if (totalWeight == 0) {
+
             return 0.0;
         }
 
-        return weightedSum
-                / totalWeight;
+        return
+                weightedSum
+                        / totalWeight;
     }
 
 
@@ -798,6 +841,7 @@ public class PredictionEngine {
             int period) {
 
         if (index < 0) {
+
             return 0.0;
         }
 
@@ -814,9 +858,11 @@ public class PredictionEngine {
                 2.0
                         / (period + 1.0);
 
-        for (int i = start + 1;
-             i <= index;
-             i++) {
+        for (
+                int i = start + 1;
+                i <= index;
+                i++
+        ) {
 
             double price =
                     bars.get(i).close;
@@ -843,6 +889,7 @@ public class PredictionEngine {
             int period) {
 
         if (index < period) {
+
             return 50.0;
         }
 
@@ -852,7 +899,11 @@ public class PredictionEngine {
         int start =
                 index - period + 1;
 
-        for (int i = start; i <= index; i++) {
+        for (
+                int i = start;
+                i <= index;
+                i++
+        ) {
 
             double change =
                     bars.get(i).close
@@ -880,6 +931,7 @@ public class PredictionEngine {
                 losses / period;
 
         if (averageLoss == 0) {
+
             return 100.0;
         }
 
@@ -908,6 +960,7 @@ public class PredictionEngine {
             int days) {
 
         if (index < days) {
+
             return 0.0;
         }
 
@@ -918,6 +971,7 @@ public class PredictionEngine {
                 bars.get(index - days).close;
 
         if (previous == 0) {
+
             return 0.0;
         }
 
