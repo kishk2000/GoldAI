@@ -3,13 +3,12 @@ package com.goldai.app;
 import com.goldai.app.data.HistoricalGoldProvider;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class PredictionEngine {
 
     private static final double THRESHOLD = 0.003;
-    private static final int MIN_HISTORY = 20;
+    private static final int MIN_HISTORY = 15;
     private static final int LOOKBACK = 25;
 
     public static class PredictionResult {
@@ -78,9 +77,10 @@ public class PredictionEngine {
                 );
 
         /*
-         * الاحتمالات التاريخية:
+         * الحالات التاريخية.
          *
-         * نبحث عن حالات تاريخية تشبه الحالة الحالية
+         * لكل حالة نستخدم فقط البيانات
+         * الموجودة حتى ذلك اليوم،
          * ثم نرى ماذا حدث في اليوم التالي.
          */
         List<State> historicalStates =
@@ -150,10 +150,10 @@ public class PredictionEngine {
                 );
 
         /*
-         * دمج الاحتمال الفني مع التاريخي.
+         * دمج الاحتمالات الفنية والتاريخية.
          *
-         * التاريخي يأخذ وزن أكبر لأنه مبني
-         * على ما حدث فعلياً في البيانات.
+         * التاريخي = 65%
+         * الفني = 35%
          */
         double upProbability =
                 technicalProbabilities[0] * 0.35
@@ -183,7 +183,7 @@ public class PredictionEngine {
         }
 
         /*
-         * اختيار الاتجاه صاحب أعلى احتمال.
+         * اختيار أعلى احتمال.
          */
         double maxProbability =
                 Math.max(
@@ -210,8 +210,7 @@ public class PredictionEngine {
         }
 
         /*
-         * لو الاحتمالات متقاربة جداً،
-         * لا نجبر النموذج على اتجاه.
+         * الاحتمال الثاني.
          */
         double secondProbability =
                 secondLargest(
@@ -220,6 +219,10 @@ public class PredictionEngine {
                         sidewaysProbability
                 );
 
+        /*
+         * إذا كان الفرق ضعيفاً،
+         * نعتبر الاتجاه محايداً.
+         */
         if (maxProbability < 0.40 ||
                 maxProbability - secondProbability < 0.08) {
 
@@ -227,10 +230,7 @@ public class PredictionEngine {
         }
 
         /*
-         * توقع العائد.
-         *
-         * نستخدم الحالات التاريخية الأقرب
-         * إلى الحالة الحالية.
+         * توقع العائد من الحالات التاريخية المشابهة.
          */
         double expectedReturn =
                 weightedHistoricalReturn(
@@ -239,7 +239,7 @@ public class PredictionEngine {
                 );
 
         /*
-         * لو لم توجد بيانات تاريخية كافية،
+         * في حالة عدم وجود حالات تاريخية،
          * نستخدم الاحتمالات الفنية.
          */
         if (historicalStates.isEmpty()) {
@@ -250,12 +250,12 @@ public class PredictionEngine {
         }
 
         /*
-         * نقلل المبالغة في التوقع.
+         * تقليل المبالغة.
          */
         expectedReturn *= 0.65;
 
         /*
-         * لو الاتجاه محايد، لا نسمح بتوقع ضخم.
+         * الاتجاه المحايد لا يحصل على توقع كبير.
          */
         if (direction.equals("محايد")) {
 
@@ -263,7 +263,7 @@ public class PredictionEngine {
         }
 
         /*
-         * حماية من التوقعات غير الواقعية.
+         * حماية من التوقعات المبالغ فيها.
          */
         if (expectedReturn > 0.025) {
             expectedReturn = 0.025;
@@ -278,10 +278,7 @@ public class PredictionEngine {
                         * (1.0 + expectedReturn);
 
         /*
-         * Confidence:
-         *
-         * تعتمد على قوة الاحتمال الأكبر
-         * ومدى تفوقه على الاحتمال الثاني.
+         * حساب الثقة.
          */
         double confidence =
                 50.0
@@ -323,13 +320,25 @@ public class PredictionEngine {
                 bars.get(index).close;
 
         double ema5 =
-                ema(bars, index, 5);
+                ema(
+                        bars,
+                        index,
+                        5
+                );
 
         double ema10 =
-                ema(bars, index, 10);
+                ema(
+                        bars,
+                        index,
+                        10
+                );
 
         double ema20 =
-                ema(bars, index, 20);
+                ema(
+                        bars,
+                        index,
+                        20
+                );
 
         double rsi =
                 calculateRSI(
@@ -448,9 +457,6 @@ public class PredictionEngine {
             return -weight;
         }
 
-        /*
-         * الحركة الصغيرة لا نهملها بالكامل.
-         */
         double proportional =
                 momentum / 0.003;
 
@@ -473,12 +479,6 @@ public class PredictionEngine {
 
     private double[] technicalProbabilities(
             double score) {
-
-        /*
-         * تحويل الـ score إلى احتمالات ناعمة.
-         *
-         * لا يوجد قرار حاد عند رقم معين.
-         */
 
         double up =
                 Math.exp(
