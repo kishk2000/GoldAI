@@ -60,7 +60,8 @@ public class PredictionEngine {
             );
         }
 
-        int currentIndex = bars.size() - 1;
+        int currentIndex =
+                bars.size() - 1;
 
         double currentScore =
                 calculateScore(
@@ -69,20 +70,22 @@ public class PredictionEngine {
                 );
 
         /*
+         * =====================================================
          * الاحتمالات الفنية الحالية
+         * =====================================================
          */
+
         double[] technicalProbabilities =
                 technicalProbabilities(
                         currentScore
                 );
 
         /*
-         * الحالات التاريخية.
-         *
-         * لكل حالة نستخدم فقط البيانات
-         * الموجودة حتى ذلك اليوم،
-         * ثم نرى ماذا حدث في اليوم التالي.
+         * =====================================================
+         * بناء الحالات التاريخية
+         * =====================================================
          */
+
         List<State> historicalStates =
                 new ArrayList<>();
 
@@ -92,7 +95,11 @@ public class PredictionEngine {
                         currentIndex - LOOKBACK
                 );
 
-        for (int i = start; i < currentIndex; i++) {
+        for (
+                int i = start;
+                i < currentIndex;
+                i++
+        ) {
 
             if (i + 1 >= bars.size()) {
                 break;
@@ -143,6 +150,12 @@ public class PredictionEngine {
             );
         }
 
+        /*
+         * =====================================================
+         * الاحتمالات التاريخية
+         * =====================================================
+         */
+
         double[] historicalProbabilities =
                 historicalProbabilities(
                         currentScore,
@@ -150,11 +163,11 @@ public class PredictionEngine {
                 );
 
         /*
-         * دمج الاحتمالات الفنية والتاريخية.
-         *
-         * التاريخي = 65%
-         * الفني = 35%
+         * =====================================================
+         * دمج الفني + التاريخي
+         * =====================================================
          */
+
         double upProbability =
                 technicalProbabilities[0] * 0.35
                         + historicalProbabilities[0] * 0.65;
@@ -183,8 +196,11 @@ public class PredictionEngine {
         }
 
         /*
-         * اختيار أعلى احتمال.
+         * =====================================================
+         * تحديد الاتجاه
+         * =====================================================
          */
+
         double maxProbability =
                 Math.max(
                         upProbability,
@@ -210,7 +226,7 @@ public class PredictionEngine {
         }
 
         /*
-         * الاحتمال الثاني.
+         * الاحتمال الثاني
          */
         double secondProbability =
                 secondLargest(
@@ -220,27 +236,66 @@ public class PredictionEngine {
                 );
 
         /*
-         * إذا كان الفرق ضعيفاً،
-         * نعتبر الاتجاه محايداً.
+         * إذا كانت المنافسة بين الاتجاهات قوية،
+         * نعتبر السوق محايدًا.
          */
-        if (maxProbability < 0.40 ||
-                maxProbability - secondProbability < 0.08) {
+        if (
+                maxProbability < 0.40 ||
+                        maxProbability - secondProbability < 0.08
+        ) {
 
             direction = "محايد";
         }
 
         /*
-         * توقع العائد من الحالات التاريخية المشابهة.
+         * =====================================================
+         * العائد المتوقع
+         *
+         * التعديل الرئيسي:
+         *
+         * سابقًا:
+         * كنا نأخذ متوسط جميع الحالات التاريخية.
+         *
+         * الآن:
+         * نستخدم الحالات الأقرب للسلوك الحالي،
+         * مع إعطاء وزن إضافي للحالات التي توافق
+         * الاتجاه المتوقع.
+         * =====================================================
          */
-        double expectedReturn =
-                weightedHistoricalReturn(
-                        currentScore,
-                        historicalStates
-                );
+
+        double expectedReturn;
+
+        if (direction.equals("صاعد")) {
+
+            expectedReturn =
+                    weightedDirectionalReturn(
+                            currentScore,
+                            historicalStates,
+                            1
+                    );
+
+        } else if (direction.equals("هابط")) {
+
+            expectedReturn =
+                    weightedDirectionalReturn(
+                            currentScore,
+                            historicalStates,
+                            -1
+                    );
+
+        } else {
+
+            expectedReturn =
+                    weightedDirectionalReturn(
+                            currentScore,
+                            historicalStates,
+                            0
+                    );
+        }
 
         /*
-         * في حالة عدم وجود حالات تاريخية،
-         * نستخدم الاحتمالات الفنية.
+         * في حالة عدم وجود حالات مناسبة،
+         * نستخدم الاحتمالات العامة.
          */
         if (historicalStates.isEmpty()) {
 
@@ -255,7 +310,7 @@ public class PredictionEngine {
         expectedReturn *= 0.65;
 
         /*
-         * الاتجاه المحايد لا يحصل على توقع كبير.
+         * العرضي يكون أكثر تحفظًا.
          */
         if (direction.equals("محايد")) {
 
@@ -263,8 +318,11 @@ public class PredictionEngine {
         }
 
         /*
-         * حماية من التوقعات المبالغ فيها.
+         * =====================================================
+         * حماية من التوقعات المبالغ فيها
+         * =====================================================
          */
+
         if (expectedReturn > 0.025) {
             expectedReturn = 0.025;
         }
@@ -273,13 +331,22 @@ public class PredictionEngine {
             expectedReturn = -0.025;
         }
 
+        /*
+         * =====================================================
+         * السعر المتوقع
+         * =====================================================
+         */
+
         double predictedPrice =
                 currentPrice
                         * (1.0 + expectedReturn);
 
         /*
-         * حساب الثقة.
+         * =====================================================
+         * الثقة
+         * =====================================================
          */
+
         double confidence =
                 50.0
                         + (maxProbability - 0.3333)
@@ -538,9 +605,6 @@ public class PredictionEngine {
                                     - currentScore
                     );
 
-            /*
-             * الحالات الأقرب تأخذ وزناً أكبر.
-             */
             double weight =
                     1.0
                             / (1.0 + distance);
@@ -579,13 +643,15 @@ public class PredictionEngine {
 
     /*
      * =========================================================
-     * Historical Expected Return
+     * NEW:
+     * Weighted Directional Return
      * =========================================================
      */
 
-    private double weightedHistoricalReturn(
+    private double weightedDirectionalReturn(
             double currentScore,
-            List<State> states) {
+            List<State> states,
+            int targetDirection) {
 
         if (states.isEmpty()) {
             return 0;
@@ -602,9 +668,31 @@ public class PredictionEngine {
                                     - currentScore
                     );
 
+            /*
+             * التشابه في الـScore.
+             */
             double weight =
                     1.0
                             / (1.0 + distance);
+
+            /*
+             * إعطاء وزن إضافي للحالات
+             * التي توافق الاتجاه المتوقع.
+             */
+            if (targetDirection != 0) {
+
+                if (
+                        state.direction
+                                == targetDirection
+                ) {
+
+                    weight *= 2.0;
+
+                } else {
+
+                    weight *= 0.35;
+                }
+            }
 
             weightedReturn +=
                     state.returnValue
@@ -649,9 +737,11 @@ public class PredictionEngine {
                 2.0
                         / (period + 1.0);
 
-        for (int i = start + 1;
-             i <= index;
-             i++) {
+        for (
+                int i = start + 1;
+                i <= index;
+                i++
+        ) {
 
             double price =
                     bars.get(i).close;
@@ -686,9 +776,11 @@ public class PredictionEngine {
         int start =
                 index - period + 1;
 
-        for (int i = start;
-             i <= index;
-             i++) {
+        for (
+                int i = start;
+                i <= index;
+                i++
+        ) {
 
             double change =
                     bars.get(i).close
