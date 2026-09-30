@@ -183,6 +183,7 @@ public class PredictionEngine {
         /*
          * Normalize
          */
+
         double total =
                 upProbability
                         + downProbability
@@ -228,6 +229,7 @@ public class PredictionEngine {
         /*
          * الاحتمال الثاني
          */
+
         double secondProbability =
                 secondLargest(
                         upProbability,
@@ -239,6 +241,7 @@ public class PredictionEngine {
          * إذا كانت المنافسة بين الاتجاهات قوية،
          * نعتبر السوق محايدًا.
          */
+
         if (
                 maxProbability < 0.40 ||
                         maxProbability - secondProbability < 0.08
@@ -251,52 +254,23 @@ public class PredictionEngine {
          * =====================================================
          * العائد المتوقع
          *
-         * التعديل الرئيسي:
-         *
-         * سابقًا:
-         * كنا نأخذ متوسط جميع الحالات التاريخية.
-         *
-         * الآن:
-         * نستخدم الحالات الأقرب للسلوك الحالي،
-         * مع إعطاء وزن إضافي للحالات التي توافق
-         * الاتجاه المتوقع.
+         * النسخة الأصلية:
+         * متوسط مرجح بالحالات التاريخية
+         * القريبة من الـ Score الحالي.
          * =====================================================
          */
 
-        double expectedReturn;
-
-        if (direction.equals("صاعد")) {
-
-            expectedReturn =
-                    weightedDirectionalReturn(
-                            currentScore,
-                            historicalStates,
-                            1
-                    );
-
-        } else if (direction.equals("هابط")) {
-
-            expectedReturn =
-                    weightedDirectionalReturn(
-                            currentScore,
-                            historicalStates,
-                            -1
-                    );
-
-        } else {
-
-            expectedReturn =
-                    weightedDirectionalReturn(
-                            currentScore,
-                            historicalStates,
-                            0
-                    );
-        }
+        double expectedReturn =
+                weightedHistoricalReturn(
+                        currentScore,
+                        historicalStates
+                );
 
         /*
          * في حالة عدم وجود حالات مناسبة،
          * نستخدم الاحتمالات العامة.
          */
+
         if (historicalStates.isEmpty()) {
 
             expectedReturn =
@@ -307,11 +281,13 @@ public class PredictionEngine {
         /*
          * تقليل المبالغة.
          */
+
         expectedReturn *= 0.65;
 
         /*
          * العرضي يكون أكثر تحفظًا.
          */
+
         if (direction.equals("محايد")) {
 
             expectedReturn *= 0.45;
@@ -440,6 +416,7 @@ public class PredictionEngine {
         /*
          * Trend
          */
+
         if (ema5 > ema10) {
             score += 1.5;
         } else {
@@ -455,6 +432,7 @@ public class PredictionEngine {
         /*
          * Position
          */
+
         if (price > ema5) {
             score += 1.0;
         } else {
@@ -470,6 +448,7 @@ public class PredictionEngine {
         /*
          * Momentum
          */
+
         score += momentumSignal(
                 momentum1,
                 1.0
@@ -488,6 +467,7 @@ public class PredictionEngine {
         /*
          * RSI
          */
+
         if (rsi >= 55 && rsi <= 68) {
 
             score += 1.5;
@@ -643,15 +623,13 @@ public class PredictionEngine {
 
     /*
      * =========================================================
-     * NEW:
-     * Weighted Directional Return
+     * Weighted Historical Return
      * =========================================================
      */
 
-    private double weightedDirectionalReturn(
+    private double weightedHistoricalReturn(
             double currentScore,
-            List<State> states,
-            int targetDirection) {
+            List<State> states) {
 
         if (states.isEmpty()) {
             return 0;
@@ -668,31 +646,9 @@ public class PredictionEngine {
                                     - currentScore
                     );
 
-            /*
-             * التشابه في الـScore.
-             */
             double weight =
                     1.0
                             / (1.0 + distance);
-
-            /*
-             * إعطاء وزن إضافي للحالات
-             * التي توافق الاتجاه المتوقع.
-             */
-            if (targetDirection != 0) {
-
-                if (
-                        state.direction
-                                == targetDirection
-                ) {
-
-                    weight *= 2.0;
-
-                } else {
-
-                    weight *= 0.35;
-                }
-            }
 
             weightedReturn +=
                     state.returnValue
