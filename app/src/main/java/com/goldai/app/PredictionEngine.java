@@ -1,187 +1,379 @@
-package com.goldai.app.data;
+package com.goldai.app;
 
+import com.goldai.app.data.HistoricalGoldProvider;
+
+import java.util.ArrayList;
 import java.util.List;
 
 public class PredictionEngine {
 
+    private static final double THRESHOLD = 0.003;
+    private static final int MIN_HISTORY = 15;
+    private static final int LOOKBACK = 25;
+
     public static class PredictionResult {
+
         public double predictedPrice;
         public String direction;
         public double confidence;
 
-        public PredictionResult(double predictedPrice,
-                                String direction,
-                                double confidence) {
+        public PredictionResult(
+                double predictedPrice,
+                String direction,
+                double confidence) {
+
             this.predictedPrice = predictedPrice;
             this.direction = direction;
             this.confidence = confidence;
         }
     }
 
-    /**
-     * يتوقع الاتجاه أولاً، ثم يحدد حجم الحركة بشكل منفصل.
-     *
-     * الفكرة:
-     * 1- الاتجاه يعتمد على الزخم والمتوسطات.
-     * 2- حجم الحركة يعتمد على متوسط الحركة الأخيرة.
-     * 3- لا نسمح لحجم الحركة بأن يغيّر الاتجاه.
-     */
-    public static PredictionResult predict(List<GoldBar> bars) {
+    private static class State {
 
-        if (bars == null || bars.size() < 10) {
+        double score;
+        double returnValue;
+        int direction;
+
+        State(
+                double score,
+                double returnValue,
+                int direction) {
+
+            this.score = score;
+            this.returnValue = returnValue;
+            this.direction = direction;
+        }
+    }
+
+    public PredictionResult analyze(
+            double currentPrice,
+            List<HistoricalGoldProvider.GoldBar> bars) {
+
+        if (bars == null ||
+                bars.size() < MIN_HISTORY ||
+                currentPrice <= 0) {
+
             return new PredictionResult(
-                    bars != null && !bars.isEmpty()
-                            ? bars.get(bars.size() - 1).close
-                            : 0.0,
-                    "SIDEWAYS",
-                    50.0
+                    currentPrice,
+                    "محايد",
+                    50
             );
         }
 
-        int n = bars.size();
+        int currentIndex = bars.size() - 1;
 
-        double current = bars.get(n - 1).close;
-        double previous = bars.get(n - 2).close;
+        double currentScore =
+                calculateScore(
+                        bars,
+                        currentIndex
+                );
 
-        // =========================
-        // 1) حساب التغيرات الأخيرة
-        // =========================
+        /*
+         * =====================================================
+         * بناء الحالات التاريخية
+         * =====================================================
+         */
 
-        double change1 = current - previous;
+        List<State> historicalStates =
+                new ArrayList<>();
 
-        double change3 = 0.0;
-        if (n >= 4) {
-            change3 = current - bars.get(n - 4).close;
+        int start =
+                Math.max(
+                        15,
+                        currentIndex - LOOKBACK
+                );
+
+        for (
+                int i = start;
+                i < currentIndex;
+                i++
+        ) {
+
+            if (i + 1 >= bars.size()) {
+                break;
+            }
+
+            double score =
+                    calculateScore(
+                            bars,
+                            i
+                    );
+
+            double today =
+                    bars.get(i).close;
+
+            double tomorrow =
+                    bars.get(i + 1).close;
+
+            if (today <= 0 ||
+                    tomorrow <= 0) {
+                continue;
+            }
+
+            double change =
+                    (tomorrow - today)
+                            / today;
+
+            int direction;
+
+            if (change >= THRESHOLD) {
+
+                direction = 1;
+
+            } else if (change <= -THRESHOLD) {
+
+                direction = -1;
+
+            } else {
+
+                direction = 0;
+            }
+
+            historicalStates.add(
+                    new State(
+                            score,
+                            change,
+                            direction
+                    )
+            );
         }
 
-        double change5 = 0.0;
-        if (n >= 6) {
-            change5 = current - bars.get(n - 6).close;
+        /*
+         * =====================================================
+         * حساب مكونات الاتجاه
+         * =====================================================
+         */
+
+        double trendScore =
+                calculateTrendScore(
+                        bars,
+                        currentIndex
+                );
+
+        double positionScore =
+                calculatePositionScore(
+                        bars,
+                        currentIndex
+                );
+
+        double momentumScore =
+                calculateMomentumScore(
+                        bars,
+                        currentIndex
+                );
+
+        double rsiScore =
+                calculateRsiScore(
+                        bars,
+                        currentIndex
+                );
+
+        /*
+         * =====================================================
+         * Ensemble Score
+         * =====================================================
+         */
+
+        double ensembleScore =
+                trendScore
+                        + positionScore
+                        + momentumScore
+                        + rsiScore;
+
+        /*
+         * =====================================================
+         * توقع العائد
+         * =====================================================
+         */
+
+        double expectedReturn =
+                weightedHistoricalReturn(
+                        currentScore,
+                        historicalStates
+                );
+
+        if (historicalStates.isEmpty()) {
+            expectedReturn = 0;
         }
 
-        // =========================
-        // 2) المتوسطات المتحركة
-        // =========================
+        expectedReturn *= 0.65;
 
-        double ma5 = movingAverage(bars, 5);
-        double ma10 = movingAverage(bars, 10);
+        /*
+         * =====================================================
+         * حساب أصوات الاتجاه
+         * =====================================================
+         */
 
-        // =========================
-        // 3) تحديد الاتجاه فقط
-        // =========================
+        int bullishVotes = 0;
+        int bearishVotes = 0;
 
-        double directionScore = 0.0;
-
-        // السعر فوق MA5
-        if (current > ma5) {
-            directionScore += 1.0;
-        } else if (current < ma5) {
-            directionScore -= 1.0;
+        if (trendScore > 0) {
+            bullishVotes++;
+        } else if (trendScore < 0) {
+            bearishVotes++;
         }
 
-        // MA5 فوق MA10
-        if (ma5 > ma10) {
-            directionScore += 1.0;
-        } else if (ma5 < ma10) {
-            directionScore -= 1.0;
+        if (positionScore > 0) {
+            bullishVotes++;
+        } else if (positionScore < 0) {
+            bearishVotes++;
         }
 
-        // حركة آخر 3 شموع
-        if (change3 > 0) {
-            directionScore += 1.0;
-        } else if (change3 < 0) {
-            directionScore -= 1.0;
+        if (momentumScore > 0) {
+            bullishVotes++;
+        } else if (momentumScore < 0) {
+            bearishVotes++;
         }
 
-        // حركة آخر 5 شموع ولكن بوزن أقل
-        if (change5 > 0) {
-            directionScore += 0.5;
-        } else if (change5 < 0) {
-            directionScore -= 0.5;
+        if (rsiScore > 0) {
+            bullishVotes++;
+        } else if (rsiScore < 0) {
+            bearishVotes++;
         }
 
-        // الحركة اللحظية لها وزن صغير فقط
-        if (change1 > 0) {
-            directionScore += 0.25;
-        } else if (change1 < 0) {
-            directionScore -= 0.25;
+        int voteDifference =
+                Math.abs(
+                        bullishVotes
+                                - bearishVotes
+                );
+
+        /*
+         * =====================================================
+         * ضبط حجم التوقع حسب اتفاق المؤشرات
+         * =====================================================
+         */
+
+        if (voteDifference <= 1) {
+
+            expectedReturn *= 0.60;
+
+        } else if (voteDifference == 2) {
+
+            expectedReturn *= 0.85;
+
+        } else {
+
+            expectedReturn *= 1.05;
         }
 
-        // =========================
-        // 4) الاتجاه النهائي
-        // =========================
+        /*
+         * Calibration
+         */
+
+        expectedReturn *= 0.45;
+
+        /*
+         * حماية
+         */
+
+        if (expectedReturn > 0.03) {
+            expectedReturn = 0.03;
+        }
+
+        if (expectedReturn < -0.03) {
+            expectedReturn = -0.03;
+        }
+
+        /*
+         * =====================================================
+         * تحديد الاتجاه
+         * =====================================================
+         */
 
         String direction;
 
-        if (directionScore >= 1.5) {
-            direction = "UP";
-        } else if (directionScore <= -1.5) {
-            direction = "DOWN";
-        } else {
-            direction = "SIDEWAYS";
-        }
+        if (
+                ensembleScore >= 3.0 &&
+                        expectedReturn >= THRESHOLD
+        ) {
 
-        // =========================
-        // 5) حساب متوسط حجم الحركة
-        // =========================
+            direction = "صاعد";
 
-        double averageMove = averageAbsoluteMove(bars, 10);
+        } else if (
+                ensembleScore <= -3.0 &&
+                        expectedReturn <= -THRESHOLD
+        ) {
 
-        // منع الحركة من أن تصبح كبيرة بشكل مبالغ فيه
-        double maxMove = current * 0.025; // 2.5%
-        double minMove = current * 0.001;  // 0.1%
+            direction = "هابط";
 
-        double moveSize = averageMove;
+        } else if (ensembleScore >= 4.0) {
 
-        if (moveSize < minMove) {
-            moveSize = minMove;
-        }
+            direction = "صاعد";
 
-        if (moveSize > maxMove) {
-            moveSize = maxMove;
-        }
+        } else if (ensembleScore <= -4.0) {
 
-        // =========================
-        // 6) فصل الاتجاه عن حجم الحركة
-        // =========================
-
-        double predictedPrice;
-
-        if ("UP".equals(direction)) {
-
-            predictedPrice = current + moveSize;
-
-        } else if ("DOWN".equals(direction)) {
-
-            predictedPrice = current - moveSize;
+            direction = "هابط";
 
         } else {
 
-            // في حالة الاتجاه الجانبي،
-            // لا نقفز بالسعر بقوة.
-            predictedPrice = current;
+            direction = "محايد";
         }
 
-        // =========================
-        // 7) حساب الثقة
-        // =========================
+        /*
+         * =====================================================
+         * العرضي أكثر تحفظًا
+         * =====================================================
+         */
 
-        double confidence;
-
-        double absScore = Math.abs(directionScore);
-
-        if ("SIDEWAYS".equals(direction)) {
-
-            confidence = 50.0 + Math.min(absScore * 5.0, 10.0);
-
-        } else {
-
-            confidence = 50.0 + Math.min(absScore * 8.0, 40.0);
+        if (direction.equals("محايد")) {
+            expectedReturn *= 0.45;
         }
 
-        // لا نسمح بثقة أقل من 50 أو أعلى من 90
-        confidence = Math.max(50.0, confidence);
-        confidence = Math.min(90.0, confidence);
+        /*
+         * =====================================================
+         * السعر المتوقع
+         * =====================================================
+         */
+
+        double predictedPrice =
+                currentPrice
+                        * (1.0 + expectedReturn);
+
+        /*
+         * =====================================================
+         * الثقة
+         * =====================================================
+         */
+
+        double scoreStrength =
+                Math.min(
+                        Math.abs(ensembleScore),
+                        8.0
+                );
+
+        double voteStrength =
+                voteDifference / 4.0;
+
+        double movementStrength =
+                Math.min(
+                        Math.abs(expectedReturn) / 0.01,
+                        1.0
+                );
+
+        double confidence =
+                50.0
+                        + scoreStrength * 3.5
+                        + voteStrength * 12.0
+                        + movementStrength * 8.0;
+
+        double rsi =
+                calculateRSI(
+                        bars,
+                        currentIndex,
+                        14
+                );
+
+        if (rsi < 32 || rsi > 68) {
+            confidence += 3.0;
+        }
+
+        if (confidence < 40) {
+            confidence = 40;
+        }
+
+        if (confidence > 85) {
+            confidence = 85;
+        }
 
         return new PredictionResult(
                 predictedPrice,
@@ -190,55 +382,444 @@ public class PredictionEngine {
         );
     }
 
-    /**
-     * حساب Moving Average
+    /*
+     * =========================================================
+     * Ensemble Score
+     *
+     * هذه الدالة كانت ناقصة في النسخة السابقة.
+     * وهي تجمع نفس مكونات Ensemble المستخدمة في التحليل الحالي.
+     * =========================================================
      */
-    private static double movingAverage(List<GoldBar> bars, int period) {
 
-        int n = bars.size();
+    private double calculateScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
 
-        if (n == 0) {
-            return 0.0;
-        }
+        double trendScore =
+                calculateTrendScore(
+                        bars,
+                        index
+                );
 
-        int start = Math.max(0, n - period);
+        double positionScore =
+                calculatePositionScore(
+                        bars,
+                        index
+                );
 
-        double sum = 0.0;
-        int count = 0;
+        double momentumScore =
+                calculateMomentumScore(
+                        bars,
+                        index
+                );
 
-        for (int i = start; i < n; i++) {
-            sum += bars.get(i).close;
-            count++;
-        }
+        double rsiScore =
+                calculateRsiScore(
+                        bars,
+                        index
+                );
 
-        return count > 0 ? sum / count : bars.get(n - 1).close;
+        return trendScore
+                + positionScore
+                + momentumScore
+                + rsiScore;
     }
 
-    /**
-     * متوسط حجم الحركة المطلقة في آخر عدد من الشموع.
+    /*
+     * =========================================================
+     * Trend Score
+     * =========================================================
      */
-    private static double averageAbsoluteMove(List<GoldBar> bars, int period) {
 
-        int n = bars.size();
+    private double calculateTrendScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
 
-        if (n < 2) {
-            return 0.0;
+        double ema5 =
+                ema(
+                        bars,
+                        index,
+                        5
+                );
+
+        double ema10 =
+                ema(
+                        bars,
+                        index,
+                        10
+                );
+
+        double ema20 =
+                ema(
+                        bars,
+                        index,
+                        20
+                );
+
+        double score = 0;
+
+        if (ema5 > ema10) {
+            score += 1.5;
+        } else {
+            score -= 1.5;
         }
 
-        int start = Math.max(1, n - period);
-
-        double sum = 0.0;
-        int count = 0;
-
-        for (int i = start; i < n; i++) {
-
-            double move =
-                    Math.abs(bars.get(i).close - bars.get(i - 1).close);
-
-            sum += move;
-            count++;
+        if (ema10 > ema20) {
+            score += 1.5;
+        } else {
+            score -= 1.5;
         }
 
-        return count > 0 ? sum / count : 0.0;
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * Position Score
+     * =========================================================
+     */
+
+    private double calculatePositionScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double price =
+                bars.get(index).close;
+
+        double ema5 =
+                ema(
+                        bars,
+                        index,
+                        5
+                );
+
+        double ema10 =
+                ema(
+                        bars,
+                        index,
+                        10
+                );
+
+        double score = 0;
+
+        if (price > ema5) {
+            score += 1.0;
+        } else {
+            score -= 1.0;
+        }
+
+        if (price > ema10) {
+            score += 0.75;
+        } else {
+            score -= 0.75;
+        }
+
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * Momentum Score
+     * =========================================================
+     */
+
+    private double calculateMomentumScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double momentum1 =
+                momentum(
+                        bars,
+                        index,
+                        1
+                );
+
+        double momentum3 =
+                momentum(
+                        bars,
+                        index,
+                        3
+                );
+
+        double momentum5 =
+                momentum(
+                        bars,
+                        index,
+                        5
+                );
+
+        double score = 0;
+
+        score += momentumSignal(
+                momentum1,
+                1.0
+        );
+
+        score += momentumSignal(
+                momentum3,
+                1.5
+        );
+
+        score += momentumSignal(
+                momentum5,
+                2.0
+        );
+
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * RSI Score
+     * =========================================================
+     */
+
+    private double calculateRsiScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double rsi =
+                calculateRSI(
+                        bars,
+                        index,
+                        14
+                );
+
+        if (rsi >= 55 && rsi <= 68) {
+
+            return 1.5;
+
+        } else if (rsi >= 45 && rsi < 55) {
+
+            return 0;
+
+        } else if (rsi >= 32 && rsi < 45) {
+
+            return -1.0;
+
+        } else if (rsi < 32) {
+
+            return 1.0;
+
+        } else {
+
+            return -1.0;
+        }
+    }
+
+    /*
+     * =========================================================
+     * Momentum Signal
+     * =========================================================
+     */
+
+    private double momentumSignal(
+            double momentum,
+            double weight) {
+
+        if (momentum > 0.003) {
+            return weight;
+        }
+
+        if (momentum < -0.003) {
+            return -weight;
+        }
+
+        double proportional =
+                momentum / 0.003;
+
+        if (proportional > 1) {
+            proportional = 1;
+        }
+
+        if (proportional < -1) {
+            proportional = -1;
+        }
+
+        return proportional * weight;
+    }
+
+    /*
+     * =========================================================
+     * Weighted Historical Return
+     * =========================================================
+     */
+
+    private double weightedHistoricalReturn(
+            double currentScore,
+            List<State> states) {
+
+        if (states.isEmpty()) {
+            return 0;
+        }
+
+        double weightedReturn = 0;
+        double totalWeight = 0;
+
+        for (State state : states) {
+
+            double distance =
+                    Math.abs(
+                            state.score
+                                    - currentScore
+                    );
+
+            double weight =
+                    1.0
+                            / (1.0 + distance);
+
+            weightedReturn +=
+                    state.returnValue
+                            * weight;
+
+            totalWeight += weight;
+        }
+
+        if (totalWeight <= 0) {
+            return 0;
+        }
+
+        return weightedReturn
+                / totalWeight;
+    }
+
+    /*
+     * =========================================================
+     * EMA
+     * =========================================================
+     */
+
+    private double ema(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index,
+            int period) {
+
+        if (index < 0) {
+            return bars.get(0).close;
+        }
+
+        int start =
+                Math.max(
+                        0,
+                        index - period * 3
+                );
+
+        double ema =
+                bars.get(start).close;
+
+        double multiplier =
+                2.0
+                        / (period + 1.0);
+
+        for (
+                int i = start + 1;
+                i <= index;
+                i++
+        ) {
+
+            double price =
+                    bars.get(i).close;
+
+            ema =
+                    (price - ema)
+                            * multiplier
+                            + ema;
+        }
+
+        return ema;
+    }
+
+    /*
+     * =========================================================
+     * RSI
+     * =========================================================
+     */
+
+    private double calculateRSI(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index,
+            int period) {
+
+        if (index < period) {
+            return 50;
+        }
+
+        double gain = 0;
+        double loss = 0;
+
+        int start =
+                index - period + 1;
+
+        for (
+                int i = start;
+                i <= index;
+                i++
+        ) {
+
+            double change =
+                    bars.get(i).close
+                            - bars.get(i - 1).close;
+
+            if (change > 0) {
+
+                gain += change;
+
+            } else {
+
+                loss -= change;
+            }
+        }
+
+        if (loss == 0) {
+            return 100;
+        }
+
+        double averageGain =
+                gain / period;
+
+        double averageLoss =
+                loss / period;
+
+        if (averageLoss == 0) {
+            return 100;
+        }
+
+        double rs =
+                averageGain
+                        / averageLoss;
+
+        return 100
+                - (100
+                / (1 + rs));
+    }
+
+    /*
+     * =========================================================
+     * Momentum
+     * =========================================================
+     */
+
+    private double momentum(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index,
+            int period) {
+
+        if (index < period) {
+            return 0;
+        }
+
+        double current =
+                bars.get(index).close;
+
+        double previous =
+                bars.get(index - period).close;
+
+        if (previous == 0) {
+            return 0;
+        }
+
+        return
+                (current - previous)
+                        / previous;
     }
 }
