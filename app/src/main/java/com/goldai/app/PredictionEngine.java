@@ -1,6 +1,4 @@
-package com.goldai.app;
-
-import com.goldai.app.data.HistoricalGoldProvider;
+package com.goldai.app.data;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,12 +13,12 @@ public class PredictionEngine {
 
         public double predictedPrice;
         public String direction;
-        public double confidence;
+        public int confidence;
 
         public PredictionResult(
                 double predictedPrice,
                 String direction,
-                double confidence) {
+                int confidence) {
 
             this.predictedPrice = predictedPrice;
             this.direction = direction;
@@ -32,12 +30,12 @@ public class PredictionEngine {
 
         double score;
         double returnValue;
-        int direction;
+        String direction;
 
         State(
                 double score,
                 double returnValue,
-                int direction) {
+                String direction) {
 
             this.score = score;
             this.returnValue = returnValue;
@@ -46,102 +44,35 @@ public class PredictionEngine {
     }
 
     public PredictionResult analyze(
-            double currentPrice,
             List<HistoricalGoldProvider.GoldBar> bars) {
 
-        if (bars == null ||
-                bars.size() < MIN_HISTORY ||
-                currentPrice <= 0) {
+        if (bars == null || bars.size() < MIN_HISTORY) {
 
             return new PredictionResult(
-                    currentPrice,
+                    0,
                     "محايد",
-                    50
+                    40
             );
         }
 
         int currentIndex = bars.size() - 1;
 
-        double currentScore =
-                calculateScore(
-                        bars,
-                        currentIndex
-                );
+        double currentPrice =
+                bars.get(currentIndex).close;
 
-        /*
-         * =====================================================
-         * بناء الحالات التاريخية
-         * =====================================================
-         */
+        if (currentPrice <= 0) {
 
-        List<State> historicalStates =
-                new ArrayList<>();
-
-        int start =
-                Math.max(
-                        15,
-                        currentIndex - LOOKBACK
-                );
-
-        for (
-                int i = start;
-                i < currentIndex;
-                i++
-        ) {
-
-            if (i + 1 >= bars.size()) {
-                break;
-            }
-
-            double score =
-                    calculateScore(
-                            bars,
-                            i
-                    );
-
-            double today =
-                    bars.get(i).close;
-
-            double tomorrow =
-                    bars.get(i + 1).close;
-
-            if (today <= 0 ||
-                    tomorrow <= 0) {
-                continue;
-            }
-
-            double change =
-                    (tomorrow - today)
-                            / today;
-
-            int direction;
-
-            if (change >= THRESHOLD) {
-
-                direction = 1;
-
-            } else if (change <= -THRESHOLD) {
-
-                direction = -1;
-
-            } else {
-
-                direction = 0;
-            }
-
-            historicalStates.add(
-                    new State(
-                            score,
-                            change,
-                            direction
-                    )
+            return new PredictionResult(
+                    0,
+                    "محايد",
+                    40
             );
         }
 
         /*
-         * =====================================================
-         * حساب مكونات الاتجاه
-         * =====================================================
+         * ==========================================
+         * 1. Current technical score
+         * ==========================================
          */
 
         double trendScore =
@@ -168,40 +99,211 @@ public class PredictionEngine {
                         currentIndex
                 );
 
-        /*
-         * =====================================================
-         * Ensemble Score
-         * =====================================================
-         */
-
         double ensembleScore =
                 trendScore
                         + positionScore
                         + momentumScore
                         + rsiScore;
 
+
         /*
-         * =====================================================
-         * توقع العائد
-         * =====================================================
+         * ==========================================
+         * 2. Current indicators
+         * ==========================================
          */
 
-        double expectedReturn =
+        double ema5 =
+                ema(
+                        bars,
+                        currentIndex,
+                        5
+                );
+
+        double ema10 =
+                ema(
+                        bars,
+                        currentIndex,
+                        10
+                );
+
+        double ema20 =
+                ema(
+                        bars,
+                        currentIndex,
+                        20
+                );
+
+        double rsi =
+                calculateRSI(
+                        bars,
+                        currentIndex,
+                        14
+                );
+
+        double momentum1 =
+                momentum(
+                        bars,
+                        currentIndex,
+                        1
+                );
+
+        double momentum3 =
+                momentum(
+                        bars,
+                        currentIndex,
+                        3
+                );
+
+        double momentum5 =
+                momentum(
+                        bars,
+                        currentIndex,
+                        5
+                );
+
+
+        /*
+         * ==========================================
+         * 3. Historical states
+         * ==========================================
+         */
+
+        List<State> historicalStates =
+                new ArrayList<>();
+
+        int start =
+                Math.max(
+                        MIN_HISTORY,
+                        currentIndex - LOOKBACK
+                );
+
+        for (int i = start; i < currentIndex; i++) {
+
+            double score =
+                    calculateScore(
+                            bars,
+                            i
+                    );
+
+            double today =
+                    bars.get(i).close;
+
+            double tomorrow =
+                    bars.get(i + 1).close;
+
+            double change =
+                    (tomorrow - today)
+                            / today;
+
+            String direction;
+
+            if (change >= THRESHOLD) {
+
+                direction = "صاعد";
+
+            } else if (change <= -THRESHOLD) {
+
+                direction = "هابط";
+
+            } else {
+
+                direction = "محايد";
+            }
+
+            historicalStates.add(
+                    new State(
+                            score,
+                            change,
+                            direction
+                    )
+            );
+        }
+
+
+        /*
+         * ==========================================
+         * 4. Historical expected return
+         * ==========================================
+         */
+
+        double historicalReturn =
                 weightedHistoricalReturn(
-                        currentScore,
+                        ensembleScore,
                         historicalStates
                 );
 
-        if (historicalStates.isEmpty()) {
-            expectedReturn = 0;
-        }
-
-        expectedReturn *= 0.65;
 
         /*
-         * =====================================================
-         * حساب أصوات الاتجاه
-         * =====================================================
+         * ==========================================
+         * 5. Technical expected return
+         *
+         * هنا بنفصل حجم الحركة عن الاتجاه.
+         * ==========================================
+         */
+
+        double trendReturn = 0.0;
+
+        if (ema20 > 0) {
+
+            trendReturn =
+                    (ema5 - ema20)
+                            / ema20;
+        }
+
+        /*
+         * Momentum contribution.
+         *
+         * 1D أقل وزنًا لأنه سريع جدًا.
+         * 5D أكبر لأنه يعبر عن الاتجاه الممتد.
+         */
+
+        double technicalReturn =
+                momentum1 * 0.15
+                        + momentum3 * 0.25
+                        + momentum5 * 0.30
+                        + trendReturn * 0.20;
+
+
+        /*
+         * RSI adjustment.
+         */
+
+        if (rsi < 32) {
+
+            technicalReturn += 0.002;
+
+        } else if (rsi > 68) {
+
+            technicalReturn -= 0.002;
+
+        } else if (rsi >= 55 && rsi <= 68) {
+
+            technicalReturn += 0.001;
+
+        } else if (rsi >= 32 && rsi < 45) {
+
+            technicalReturn -= 0.001;
+        }
+
+
+        /*
+         * Momentum acceleration.
+         */
+
+        double momentumAcceleration =
+                (
+                        momentum1
+                                - momentum5 / 5.0
+                ) * 0.15;
+
+        technicalReturn +=
+                momentumAcceleration;
+
+
+        /*
+         * ==========================================
+         * 6. Vote strength
+         * ==========================================
          */
 
         int bullishVotes = 0;
@@ -237,34 +339,45 @@ public class PredictionEngine {
                                 - bearishVotes
                 );
 
+
         /*
-         * =====================================================
-         * ضبط حجم التوقع حسب اتفاق المؤشرات
-         * =====================================================
+         * عندما المؤشرات مش متفقة،
+         * نقلل حجم التوقع بدل ما نغيّر الاتجاه عشوائيًا.
          */
 
         if (voteDifference <= 1) {
 
-            expectedReturn *= 0.60;
+            technicalReturn *= 0.60;
 
         } else if (voteDifference == 2) {
 
-            expectedReturn *= 0.85;
+            technicalReturn *= 0.85;
 
         } else {
 
-            expectedReturn *= 1.05;
+            technicalReturn *= 1.05;
         }
 
+
         /*
-         * Calibration
+         * ==========================================
+         * 7. Blend historical + technical
+         * ==========================================
+         *
+         * بدل الاعتماد على التاريخ وحده،
+         * نستخدم الاثنين معًا.
+         */
+
+        double expectedReturn =
+                historicalReturn * 0.50
+                        + technicalReturn * 0.50;
+
+
+        /*
+         * منع التوقعات المبالغ فيها.
          */
 
         expectedReturn *= 0.45;
-
-        /*
-         * حماية
-         */
 
         if (expectedReturn > 0.03) {
             expectedReturn = 0.03;
@@ -274,33 +387,34 @@ public class PredictionEngine {
             expectedReturn = -0.03;
         }
 
+
         /*
-         * =====================================================
-         * تحديد الاتجاه
-         * =====================================================
+         * ==========================================
+         * 8. Direction
+         * ==========================================
          */
 
         String direction;
 
         if (
-                ensembleScore >= 3.0 &&
-                        expectedReturn >= THRESHOLD
+                ensembleScore >= 3
+                        && expectedReturn >= THRESHOLD
         ) {
 
             direction = "صاعد";
 
         } else if (
-                ensembleScore <= -3.0 &&
-                        expectedReturn <= -THRESHOLD
+                ensembleScore <= -3
+                        && expectedReturn <= -THRESHOLD
         ) {
 
             direction = "هابط";
 
-        } else if (ensembleScore >= 4.0) {
+        } else if (ensembleScore >= 4) {
 
             direction = "صاعد";
 
-        } else if (ensembleScore <= -4.0) {
+        } else if (ensembleScore <= -4) {
 
             direction = "هابط";
 
@@ -309,36 +423,38 @@ public class PredictionEngine {
             direction = "محايد";
         }
 
+
         /*
-         * =====================================================
-         * العرضي أكثر تحفظًا
-         * =====================================================
+         * لو الاتجاه محايد، نقلل حجم الحركة.
          */
 
         if (direction.equals("محايد")) {
+
             expectedReturn *= 0.45;
         }
 
+
         /*
-         * =====================================================
-         * السعر المتوقع
-         * =====================================================
+         * ==========================================
+         * 9. Predicted price
+         * ==========================================
          */
 
         double predictedPrice =
                 currentPrice
                         * (1.0 + expectedReturn);
 
+
         /*
-         * =====================================================
-         * الثقة
-         * =====================================================
+         * ==========================================
+         * 10. Confidence
+         * ==========================================
          */
 
         double scoreStrength =
                 Math.min(
-                        Math.abs(ensembleScore),
-                        8.0
+                        1.0,
+                        Math.abs(ensembleScore) / 6.0
                 );
 
         double voteStrength =
@@ -346,49 +462,48 @@ public class PredictionEngine {
 
         double movementStrength =
                 Math.min(
-                        Math.abs(expectedReturn) / 0.01,
-                        1.0
+                        1.0,
+                        Math.abs(expectedReturn) / 0.01
                 );
+
+        double rsiStrength = 0.0;
+
+        if (rsi < 30 || rsi > 70) {
+            rsiStrength = 0.15;
+        }
 
         double confidence =
-                50.0
-                        + scoreStrength * 3.5
-                        + voteStrength * 12.0
-                        + movementStrength * 8.0;
+                45.0
+                        + scoreStrength * 25.0
+                        + voteStrength * 10.0
+                        + movementStrength * 10.0
+                        + rsiStrength * 10.0;
 
-        double rsi =
-                calculateRSI(
-                        bars,
-                        currentIndex,
-                        14
-                );
+        /*
+         * لا نريد ثقة 85% بسهولة.
+         */
 
-        if (rsi < 32 || rsi > 68) {
-            confidence += 3.0;
+        if (confidence > 85) {
+            confidence = 85;
         }
 
         if (confidence < 40) {
             confidence = 40;
         }
 
-        if (confidence > 85) {
-            confidence = 85;
-        }
 
         return new PredictionResult(
                 predictedPrice,
                 direction,
-                confidence
+                (int) Math.round(confidence)
         );
     }
 
+
     /*
-     * =========================================================
-     * Ensemble Score
-     *
-     * هذه الدالة كانت ناقصة في النسخة السابقة.
-     * وهي تجمع نفس مكونات Ensemble المستخدمة في التحليل الحالي.
-     * =========================================================
+     * ==========================================
+     * Combined score
+     * ==========================================
      */
 
     private double calculateScore(
@@ -425,10 +540,11 @@ public class PredictionEngine {
                 + rsiScore;
     }
 
+
     /*
-     * =========================================================
-     * Trend Score
-     * =========================================================
+     * ==========================================
+     * Trend
+     * ==========================================
      */
 
     private double calculateTrendScore(
@@ -456,7 +572,7 @@ public class PredictionEngine {
                         20
                 );
 
-        double score = 0;
+        double score = 0.0;
 
         if (ema5 > ema10) {
             score += 1.5;
@@ -473,10 +589,11 @@ public class PredictionEngine {
         return score;
     }
 
+
     /*
-     * =========================================================
-     * Position Score
-     * =========================================================
+     * ==========================================
+     * Position
+     * ==========================================
      */
 
     private double calculatePositionScore(
@@ -500,7 +617,7 @@ public class PredictionEngine {
                         10
                 );
 
-        double score = 0;
+        double score = 0.0;
 
         if (price > ema5) {
             score += 1.0;
@@ -517,61 +634,73 @@ public class PredictionEngine {
         return score;
     }
 
+
     /*
-     * =========================================================
-     * Momentum Score
-     * =========================================================
+     * ==========================================
+     * Momentum
+     * ==========================================
      */
 
     private double calculateMomentumScore(
             List<HistoricalGoldProvider.GoldBar> bars,
             int index) {
 
-        double momentum1 =
+        double m1 =
                 momentum(
                         bars,
                         index,
                         1
                 );
 
-        double momentum3 =
+        double m3 =
                 momentum(
                         bars,
                         index,
                         3
                 );
 
-        double momentum5 =
+        double m5 =
                 momentum(
                         bars,
                         index,
                         5
                 );
 
-        double score = 0;
+        double score = 0.0;
 
-        score += momentumSignal(
-                momentum1,
-                1.0
-        );
-
-        score += momentumSignal(
-                momentum3,
-                1.5
-        );
-
-        score += momentumSignal(
-                momentum5,
-                2.0
-        );
+        score += momentumSignal(m1, 1.0);
+        score += momentumSignal(m3, 1.5);
+        score += momentumSignal(m5, 2.0);
 
         return score;
     }
 
+
+    private double momentumSignal(
+            double value,
+            double weight) {
+
+        if (value >= THRESHOLD) {
+
+            return weight;
+
+        } else if (value <= -THRESHOLD) {
+
+            return -weight;
+
+        } else {
+
+            return
+                    (value / THRESHOLD)
+                            * weight;
+        }
+    }
+
+
     /*
-     * =========================================================
-     * RSI Score
-     * =========================================================
+     * ==========================================
+     * RSI
+     * ==========================================
      */
 
     private double calculateRsiScore(
@@ -591,7 +720,7 @@ public class PredictionEngine {
 
         } else if (rsi >= 45 && rsi < 55) {
 
-            return 0;
+            return 0.0;
 
         } else if (rsi >= 32 && rsi < 45) {
 
@@ -607,58 +736,31 @@ public class PredictionEngine {
         }
     }
 
-    /*
-     * =========================================================
-     * Momentum Signal
-     * =========================================================
-     */
-
-    private double momentumSignal(
-            double momentum,
-            double weight) {
-
-        if (momentum > 0.003) {
-            return weight;
-        }
-
-        if (momentum < -0.003) {
-            return -weight;
-        }
-
-        double proportional =
-                momentum / 0.003;
-
-        if (proportional > 1) {
-            proportional = 1;
-        }
-
-        if (proportional < -1) {
-            proportional = -1;
-        }
-
-        return proportional * weight;
-    }
 
     /*
-     * =========================================================
-     * Weighted Historical Return
-     * =========================================================
+     * ==========================================
+     * Historical weighted return
+     * ==========================================
      */
 
     private double weightedHistoricalReturn(
             double currentScore,
             List<State> states) {
 
-        if (states.isEmpty()) {
-            return 0;
+        if (
+                states == null
+                        || states.isEmpty()
+        ) {
+
+            return 0.0;
         }
 
-        double weightedReturn = 0;
-        double totalWeight = 0;
+        double weightedSum = 0.0;
+        double totalWeight = 0.0;
 
         for (State state : states) {
 
-            double distance =
+            double difference =
                     Math.abs(
                             state.score
                                     - currentScore
@@ -666,27 +768,28 @@ public class PredictionEngine {
 
             double weight =
                     1.0
-                            / (1.0 + distance);
+                            / (1.0 + difference);
 
-            weightedReturn +=
+            weightedSum +=
                     state.returnValue
                             * weight;
 
             totalWeight += weight;
         }
 
-        if (totalWeight <= 0) {
-            return 0;
+        if (totalWeight == 0) {
+            return 0.0;
         }
 
-        return weightedReturn
+        return weightedSum
                 / totalWeight;
     }
 
+
     /*
-     * =========================================================
+     * ==========================================
      * EMA
-     * =========================================================
+     * ==========================================
      */
 
     private double ema(
@@ -695,7 +798,7 @@ public class PredictionEngine {
             int period) {
 
         if (index < 0) {
-            return bars.get(0).close;
+            return 0.0;
         }
 
         int start =
@@ -711,11 +814,9 @@ public class PredictionEngine {
                 2.0
                         / (period + 1.0);
 
-        for (
-                int i = start + 1;
-                i <= index;
-                i++
-        ) {
+        for (int i = start + 1;
+             i <= index;
+             i++) {
 
             double price =
                     bars.get(i).close;
@@ -729,10 +830,11 @@ public class PredictionEngine {
         return ema;
     }
 
+
     /*
-     * =========================================================
+     * ==========================================
      * RSI
-     * =========================================================
+     * ==========================================
      */
 
     private double calculateRSI(
@@ -741,20 +843,16 @@ public class PredictionEngine {
             int period) {
 
         if (index < period) {
-            return 50;
+            return 50.0;
         }
 
-        double gain = 0;
-        double loss = 0;
+        double gains = 0.0;
+        double losses = 0.0;
 
         int start =
                 index - period + 1;
 
-        for (
-                int i = start;
-                i <= index;
-                i++
-        ) {
+        for (int i = start; i <= index; i++) {
 
             double change =
                     bars.get(i).close
@@ -762,60 +860,65 @@ public class PredictionEngine {
 
             if (change > 0) {
 
-                gain += change;
+                gains += change;
 
             } else {
 
-                loss -= change;
+                losses -= change;
             }
         }
 
-        if (loss == 0) {
-            return 100;
+        if (losses == 0) {
+
+            return 100.0;
         }
 
         double averageGain =
-                gain / period;
+                gains / period;
 
         double averageLoss =
-                loss / period;
+                losses / period;
 
         if (averageLoss == 0) {
-            return 100;
+            return 100.0;
         }
 
         double rs =
                 averageGain
                         / averageLoss;
 
-        return 100
-                - (100
-                / (1 + rs));
+        return
+                100.0
+                        - (
+                        100.0
+                                / (1.0 + rs)
+                );
     }
 
+
     /*
-     * =========================================================
+     * ==========================================
      * Momentum
-     * =========================================================
+     * ==========================================
      */
 
     private double momentum(
             List<HistoricalGoldProvider.GoldBar> bars,
             int index,
-            int period) {
+            int days) {
 
-        if (index < period) {
-            return 0;
+        if (index < days) {
+            return 0.0;
         }
 
         double current =
                 bars.get(index).close;
 
         double previous =
-                bars.get(index - period).close;
+                bars.get(index - days).close;
 
         if (previous == 0) {
-            return 0;
+            return 0.0;
         }
 
         return
