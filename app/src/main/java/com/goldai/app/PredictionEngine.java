@@ -1,4 +1,4 @@
-package com.goldai.app.data;
+package com.goldai.app;
 
 import java.util.ArrayList;
 import java.util.List;
