@@ -1,4 +1,4 @@
-package com.goldai.app.ai;
+package com.goldai.app;
 
 import com.goldai.app.data.HistoricalGoldProvider;
 
