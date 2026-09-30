@@ -71,17 +71,6 @@ public class PredictionEngine {
 
         /*
          * =====================================================
-         * الاحتمالات الفنية الحالية
-         * =====================================================
-         */
-
-        double[] technicalProbabilities =
-                technicalProbabilities(
-                        currentScore
-                );
-
-        /*
-         * =====================================================
          * بناء الحالات التاريخية
          * =====================================================
          */
@@ -152,111 +141,52 @@ public class PredictionEngine {
 
         /*
          * =====================================================
-         * الاحتمالات التاريخية
+         * حساب مكونات الاتجاه
          * =====================================================
          */
 
-        double[] historicalProbabilities =
-                historicalProbabilities(
-                        currentScore,
-                        historicalStates
+        double trendScore =
+                calculateTrendScore(
+                        bars,
+                        currentIndex
+                );
+
+        double positionScore =
+                calculatePositionScore(
+                        bars,
+                        currentIndex
+                );
+
+        double momentumScore =
+                calculateMomentumScore(
+                        bars,
+                        currentIndex
+                );
+
+        double rsiScore =
+                calculateRsiScore(
+                        bars,
+                        currentIndex
                 );
 
         /*
          * =====================================================
-         * دمج الفني + التاريخي
+         * Ensemble Score
          * =====================================================
          */
 
-        double upProbability =
-                technicalProbabilities[0] * 0.35
-                        + historicalProbabilities[0] * 0.65;
-
-        double downProbability =
-                technicalProbabilities[1] * 0.35
-                        + historicalProbabilities[1] * 0.65;
-
-        double sidewaysProbability =
-                technicalProbabilities[2] * 0.35
-                        + historicalProbabilities[2] * 0.65;
-
-        /*
-         * Normalize
-         */
-
-        double total =
-                upProbability
-                        + downProbability
-                        + sidewaysProbability;
-
-        if (total > 0) {
-
-            upProbability /= total;
-            downProbability /= total;
-            sidewaysProbability /= total;
-        }
+        double ensembleScore =
+                trendScore
+                        + positionScore
+                        + momentumScore
+                        + rsiScore;
 
         /*
          * =====================================================
-         * تحديد الاتجاه
-         * =====================================================
-         */
-
-        double maxProbability =
-                Math.max(
-                        upProbability,
-                        Math.max(
-                                downProbability,
-                                sidewaysProbability
-                        )
-                );
-
-        String direction;
-
-        if (maxProbability == upProbability) {
-
-            direction = "صاعد";
-
-        } else if (maxProbability == downProbability) {
-
-            direction = "هابط";
-
-        } else {
-
-            direction = "محايد";
-        }
-
-        /*
-         * الاحتمال الثاني
-         */
-
-        double secondProbability =
-                secondLargest(
-                        upProbability,
-                        downProbability,
-                        sidewaysProbability
-                );
-
-        /*
-         * إذا كانت المنافسة بين الاتجاهات قوية،
-         * نعتبر السوق محايدًا.
-         */
-
-        if (
-                maxProbability < 0.40 ||
-                        maxProbability - secondProbability < 0.08
-        ) {
-
-            direction = "محايد";
-        }
-
-        /*
-         * =====================================================
-         * العائد المتوقع
+         * توقع العائد
          *
-         * النسخة الأصلية:
-         * متوسط مرجح بالحالات التاريخية
-         * القريبة من الـ Score الحالي.
+         * نحتفظ بنفس طريقة Probability Ensemble
+         * لحساب السعر المتوقع.
          * =====================================================
          */
 
@@ -266,45 +196,140 @@ public class PredictionEngine {
                         historicalStates
                 );
 
-        /*
-         * في حالة عدم وجود حالات مناسبة،
-         * نستخدم الاحتمالات العامة.
-         */
-
         if (historicalStates.isEmpty()) {
 
             expectedReturn =
-                    (upProbability - downProbability)
-                            * 0.006;
+                    0;
         }
 
         /*
-         * تقليل المبالغة.
+         * تقليل المبالغة
          */
 
         expectedReturn *= 0.65;
 
         /*
-         * العرضي يكون أكثر تحفظًا.
+         * =====================================================
+         * حساب أصوات الاتجاه
+         * =====================================================
+         */
+
+        int bullishVotes = 0;
+        int bearishVotes = 0;
+
+        if (trendScore > 0) {
+            bullishVotes++;
+        } else if (trendScore < 0) {
+            bearishVotes++;
+        }
+
+        if (positionScore > 0) {
+            bullishVotes++;
+        } else if (positionScore < 0) {
+            bearishVotes++;
+        }
+
+        if (momentumScore > 0) {
+            bullishVotes++;
+        } else if (momentumScore < 0) {
+            bearishVotes++;
+        }
+
+        if (rsiScore > 0) {
+            bullishVotes++;
+        } else if (rsiScore < 0) {
+            bearishVotes++;
+        }
+
+        int voteDifference =
+                Math.abs(
+                        bullishVotes
+                                - bearishVotes
+                );
+
+        /*
+         * =====================================================
+         * ضبط حجم التوقع حسب اتفاق المؤشرات
+         * =====================================================
+         */
+
+        if (voteDifference <= 1) {
+
+            expectedReturn *= 0.60;
+
+        } else if (voteDifference == 2) {
+
+            expectedReturn *= 0.85;
+
+        } else {
+
+            expectedReturn *= 1.05;
+        }
+
+        /*
+         * Calibration
+         */
+
+        expectedReturn *= 0.45;
+
+        /*
+         * حماية
+         */
+
+        if (expectedReturn > 0.03) {
+            expectedReturn = 0.03;
+        }
+
+        if (expectedReturn < -0.03) {
+            expectedReturn = -0.03;
+        }
+
+        /*
+         * =====================================================
+         * تحديد الاتجاه
+         *
+         * هنا التغيير الأساسي.
+         * =====================================================
+         */
+
+        String direction;
+
+        if (
+                ensembleScore >= 3.0 &&
+                        expectedReturn >= THRESHOLD
+        ) {
+
+            direction = "صاعد";
+
+        } else if (
+                ensembleScore <= -3.0 &&
+                        expectedReturn <= -THRESHOLD
+        ) {
+
+            direction = "هابط";
+
+        } else if (ensembleScore >= 4.0) {
+
+            direction = "صاعد";
+
+        } else if (ensembleScore <= -4.0) {
+
+            direction = "هابط";
+
+        } else {
+
+            direction = "محايد";
+        }
+
+        /*
+         * =====================================================
+         * العرضي أكثر تحفظًا
+         * =====================================================
          */
 
         if (direction.equals("محايد")) {
 
             expectedReturn *= 0.45;
-        }
-
-        /*
-         * =====================================================
-         * حماية من التوقعات المبالغ فيها
-         * =====================================================
-         */
-
-        if (expectedReturn > 0.025) {
-            expectedReturn = 0.025;
-        }
-
-        if (expectedReturn < -0.025) {
-            expectedReturn = -0.025;
         }
 
         /*
@@ -323,12 +348,41 @@ public class PredictionEngine {
          * =====================================================
          */
 
+        double scoreStrength =
+                Math.min(
+                        Math.abs(ensembleScore),
+                        8.0
+                );
+
+        double voteStrength =
+                voteDifference / 4.0;
+
+        double movementStrength =
+                Math.min(
+                        Math.abs(expectedReturn) / 0.01,
+                        1.0
+                );
+
         double confidence =
                 50.0
-                        + (maxProbability - 0.3333)
-                        * 120.0
-                        + (maxProbability - secondProbability)
-                        * 60.0;
+                        + scoreStrength * 3.5
+                        + voteStrength * 12.0
+                        + movementStrength * 8.0;
+
+        /*
+         * RSI extreme يعطي بعض الدعم للثقة
+         */
+
+        double rsi =
+                calculateRSI(
+                        bars,
+                        currentIndex,
+                        14
+                );
+
+        if (rsi < 32 || rsi > 68) {
+            confidence += 3.0;
+        }
 
         if (confidence < 40) {
             confidence = 40;
@@ -347,20 +401,13 @@ public class PredictionEngine {
 
     /*
      * =========================================================
-     * Technical Score
+     * Trend Score
      * =========================================================
      */
 
-    private double calculateScore(
+    private double calculateTrendScore(
             List<HistoricalGoldProvider.GoldBar> bars,
             int index) {
-
-        if (index < 15) {
-            return 0;
-        }
-
-        double price =
-                bars.get(index).close;
 
         double ema5 =
                 ema(
@@ -383,12 +430,76 @@ public class PredictionEngine {
                         20
                 );
 
-        double rsi =
-                calculateRSI(
+        double score = 0;
+
+        if (ema5 > ema10) {
+            score += 1.5;
+        } else {
+            score -= 1.5;
+        }
+
+        if (ema10 > ema20) {
+            score += 1.5;
+        } else {
+            score -= 1.5;
+        }
+
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * Position Score
+     * =========================================================
+     */
+
+    private double calculatePositionScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double price =
+                bars.get(index).close;
+
+        double ema5 =
+                ema(
                         bars,
                         index,
-                        14
+                        5
                 );
+
+        double ema10 =
+                ema(
+                        bars,
+                        index,
+                        10
+                );
+
+        double score = 0;
+
+        if (price > ema5) {
+            score += 1.0;
+        } else {
+            score -= 1.0;
+        }
+
+        if (price > ema10) {
+            score += 0.75;
+        } else {
+            score -= 0.75;
+        }
+
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * Momentum Score
+     * =========================================================
+     */
+
+    private double calculateMomentumScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
 
         double momentum1 =
                 momentum(
@@ -413,42 +524,6 @@ public class PredictionEngine {
 
         double score = 0;
 
-        /*
-         * Trend
-         */
-
-        if (ema5 > ema10) {
-            score += 1.5;
-        } else {
-            score -= 1.5;
-        }
-
-        if (ema10 > ema20) {
-            score += 1.5;
-        } else {
-            score -= 1.5;
-        }
-
-        /*
-         * Position
-         */
-
-        if (price > ema5) {
-            score += 1.0;
-        } else {
-            score -= 1.0;
-        }
-
-        if (price > ema10) {
-            score += 0.75;
-        } else {
-            score -= 0.75;
-        }
-
-        /*
-         * Momentum
-         */
-
         score += momentumSignal(
                 momentum1,
                 1.0
@@ -464,33 +539,53 @@ public class PredictionEngine {
                 2.0
         );
 
-        /*
-         * RSI
-         */
+        return score;
+    }
+
+    /*
+     * =========================================================
+     * RSI Score
+     * =========================================================
+     */
+
+    private double calculateRsiScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double rsi =
+                calculateRSI(
+                        bars,
+                        index,
+                        14
+                );
 
         if (rsi >= 55 && rsi <= 68) {
 
-            score += 1.5;
+            return 1.5;
 
         } else if (rsi >= 45 && rsi < 55) {
 
-            score += 0;
+            return 0;
 
         } else if (rsi >= 32 && rsi < 45) {
 
-            score -= 1.0;
+            return -1.0;
 
         } else if (rsi < 32) {
 
-            score += 1.0;
+            return 1.0;
 
-        } else if (rsi > 68) {
+        } else {
 
-            score -= 1.0;
+            return -1.0;
         }
-
-        return score;
     }
+
+    /*
+     * =========================================================
+     * Momentum Signal
+     * =========================================================
+     */
 
     private double momentumSignal(
             double momentum,
@@ -516,109 +611,6 @@ public class PredictionEngine {
         }
 
         return proportional * weight;
-    }
-
-    /*
-     * =========================================================
-     * Technical Probabilities
-     * =========================================================
-     */
-
-    private double[] technicalProbabilities(
-            double score) {
-
-        double up =
-                Math.exp(
-                        score * 0.35
-                );
-
-        double down =
-                Math.exp(
-                        -score * 0.35
-                );
-
-        double sideways =
-                Math.exp(
-                        -Math.abs(score) * 0.20
-                );
-
-        double total =
-                up + down + sideways;
-
-        return new double[] {
-                up / total,
-                down / total,
-                sideways / total
-        };
-    }
-
-    /*
-     * =========================================================
-     * Historical Probabilities
-     * =========================================================
-     */
-
-    private double[] historicalProbabilities(
-            double currentScore,
-            List<State> states) {
-
-        if (states.isEmpty()) {
-
-            return new double[] {
-                    0.3333,
-                    0.3333,
-                    0.3334
-            };
-        }
-
-        double up = 0;
-        double down = 0;
-        double sideways = 0;
-
-        double totalWeight = 0;
-
-        for (State state : states) {
-
-            double distance =
-                    Math.abs(
-                            state.score
-                                    - currentScore
-                    );
-
-            double weight =
-                    1.0
-                            / (1.0 + distance);
-
-            if (state.direction > 0) {
-
-                up += weight;
-
-            } else if (state.direction < 0) {
-
-                down += weight;
-
-            } else {
-
-                sideways += weight;
-            }
-
-            totalWeight += weight;
-        }
-
-        if (totalWeight <= 0) {
-
-            return new double[] {
-                    0.3333,
-                    0.3333,
-                    0.3334
-            };
-        }
-
-        return new double[] {
-                up / totalWeight,
-                down / totalWeight,
-                sideways / totalWeight
-        };
     }
 
     /*
@@ -803,36 +795,5 @@ public class PredictionEngine {
         return
                 (current - previous)
                         / previous;
-    }
-
-    /*
-     * =========================================================
-     * Second Largest Probability
-     * =========================================================
-     */
-
-    private double secondLargest(
-            double a,
-            double b,
-            double c) {
-
-        double largest =
-                Math.max(
-                        a,
-                        Math.max(b, c)
-                );
-
-        if (a == largest) {
-
-            return Math.max(b, c);
-
-        } else if (b == largest) {
-
-            return Math.max(a, c);
-
-        } else {
-
-            return Math.max(a, b);
-        }
     }
 }
