@@ -8,25 +8,13 @@ import java.util.List;
 
 public class PredictionEngine {
 
-    /*
-     * حدود الحركة المستخدمة لتصنيف الاتجاه.
-     */
     private static final double UP_THRESHOLD = 0.0030;
     private static final double DOWN_THRESHOLD = -0.0030;
 
-    /*
-     * أقل عدد بيانات مطلوب.
-     */
     private static final int MIN_HISTORY = 20;
 
-    /*
-     * معامل لتقليل مبالغة السعر المتوقع.
-     */
     private static final double CALIBRATION_FACTOR = 0.45;
 
-    /*
-     * الحد الأقصى للحركة المتوقعة.
-     */
     private static final double MAX_FORECAST = 0.030;
 
     public PredictionResult analyze(
@@ -59,7 +47,7 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * المؤشرات الأساسية
+         * المؤشرات
          * ==============================
          */
 
@@ -114,11 +102,8 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * نقاط الاتجاه
+         * درجات الاتجاه
          * ==============================
-         *
-         * كل مجموعة مؤشرات تعطي إشارة
-         * مستقلة بدل الاعتماد على مؤشر واحد.
          */
 
         double trendScore = 0;
@@ -128,43 +113,55 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * 1) TREND
+         * TREND
          * ==============================
          */
 
         if (ema5 > ema10) {
+
             trendScore += 1.5;
+
         } else {
+
             trendScore -= 1.5;
         }
 
         if (ema10 > ema20) {
+
             trendScore += 1.5;
+
         } else {
+
             trendScore -= 1.5;
         }
 
         /*
          * ==============================
-         * 2) POSITION
+         * POSITION
          * ==============================
          */
 
         if (currentPrice > ema5) {
+
             positionScore += 1.0;
+
         } else {
+
             positionScore -= 1.0;
         }
 
         if (currentPrice > ema10) {
+
             positionScore += 0.75;
+
         } else {
+
             positionScore -= 0.75;
         }
 
         /*
          * ==============================
-         * 3) MOMENTUM
+         * MOMENTUM
          * ==============================
          */
 
@@ -188,43 +185,47 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * 4) RSI
+         * RSI
          * ==============================
-         *
-         * لا نعتبر RSI المرتفع وحده
-         * إشارة هبوط مباشرة.
          */
 
-        if (rsi >= 55 && rsi <= 68) {
+        if (
+                rsi >= 55 &&
+                        rsi <= 68
+        ) {
 
             rsiScore += 1.5;
 
-        } else if (rsi >= 45 && rsi < 55) {
+        } else if (
+                rsi >= 45 &&
+                        rsi < 55
+        ) {
 
             rsiScore += 0;
 
-        } else if (rsi >= 32 && rsi < 45) {
+        } else if (
+                rsi >= 32 &&
+                        rsi < 45
+        ) {
 
             rsiScore -= 1.0;
 
         } else if (rsi < 32) {
 
             /*
-             * تشبع بيعي قد يعني ارتداد.
+             * تشبع بيعي.
+             * لا نعتبره هبوطًا مباشرًا.
              */
             rsiScore += 1.0;
 
         } else if (rsi > 68) {
 
-            /*
-             * تشبع شرائي.
-             */
             rsiScore -= 1.0;
         }
 
         /*
          * ==============================
-         * الدرجة النهائية للاتجاه
+         * الدرجة الكلية
          * ==============================
          */
 
@@ -236,7 +237,7 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * حساب التغير المتوقع
+         * التغير المتوقع
          * ==============================
          */
 
@@ -246,9 +247,6 @@ public class PredictionEngine {
                         ema10
                 );
 
-        /*
-         * الزخم له الوزن الأكبر.
-         */
         double forecastReturn =
                 momentum1 * 0.15 +
                         momentum3 * 0.25 +
@@ -256,8 +254,9 @@ public class PredictionEngine {
                         trendReturn * 0.20;
 
         /*
-         * RSI adjustment.
+         * RSI adjustment
          */
+
         if (rsi < 32) {
 
             forecastReturn += 0.0020;
@@ -285,9 +284,6 @@ public class PredictionEngine {
          * ==============================
          * تسارع الزخم
          * ==============================
-         *
-         * إذا كان زخم اليوم أقوى من متوسط
-         * الزخم الأطول، نضيف دفعة صغيرة.
          */
 
         double momentumAcceleration =
@@ -301,7 +297,7 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * توافق الإشارات
+         * الأصوات
          * ==============================
          */
 
@@ -309,41 +305,52 @@ public class PredictionEngine {
         int bearishVotes = 0;
 
         if (trendScore > 0) {
+
             bullishVotes++;
+
         } else if (trendScore < 0) {
+
             bearishVotes++;
         }
 
         if (momentumScore > 0) {
+
             bullishVotes++;
+
         } else if (momentumScore < 0) {
+
             bearishVotes++;
         }
 
         if (rsiScore > 0) {
+
             bullishVotes++;
+
         } else if (rsiScore < 0) {
+
             bearishVotes++;
         }
 
         if (positionScore > 0) {
+
             bullishVotes++;
+
         } else if (positionScore < 0) {
+
             bearishVotes++;
         }
-
-        /*
-         * ==============================
-         * تقليل الحركة عندما يكون هناك
-         * تعارض واضح بين المؤشرات.
-         * ==============================
-         */
 
         int voteDifference =
                 Math.abs(
                         bullishVotes -
                                 bearishVotes
                 );
+
+        /*
+         * ==============================
+         * توافق المؤشرات
+         * ==============================
+         */
 
         if (voteDifference <= 1) {
 
@@ -360,7 +367,7 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * معايرة حجم التوقع
+         * معايرة السعر
          * ==============================
          */
 
@@ -380,7 +387,6 @@ public class PredictionEngine {
 
             forecastReturn =
                     MAX_FORECAST;
-
         }
 
         if (
@@ -394,27 +400,53 @@ public class PredictionEngine {
 
         /*
          * ==============================
-         * تحديد الاتجاه
+         * فلتر الهبوط الجديد
          * ==============================
          *
-         * نستخدم الاتجاه المركب وليس السعر
-         * المتوقع وحده.
+         * الهبوط أصبح يحتاج شروطًا إضافية:
+         *
+         * 1. اتجاه عام هابط.
+         * 2. الزخم ليس إيجابيًا بقوة.
+         * 3. السعر تحت EMA10.
+         * 4. الدرجة الكلية سلبية بدرجة كافية.
+         *
+         * الهدف:
+         * تقليل إشارات الهبوط الكاذبة.
+         */
+
+        boolean strongDownTrend =
+                ema5 < ema10 &&
+                        ema10 < ema20;
+
+        boolean bearishMomentum =
+                momentum3 < 0 &&
+                        momentum5 < 0;
+
+        boolean belowTrend =
+                currentPrice < ema10;
+
+        boolean downScore =
+                totalScore <= -3.0;
+
+        boolean confirmedDown =
+                strongDownTrend &&
+                        bearishMomentum &&
+                        belowTrend &&
+                        downScore;
+
+        /*
+         * ==============================
+         * تحديد الاتجاه
+         * ==============================
          */
 
         String direction;
 
         /*
-         * إذا كانت الإشارات متقاربة جدًا،
-         * نعتبرها عرضية.
+         * الصعود يبقى قريبًا من النسخة السابقة.
          */
+
         if (
-                voteDifference <= 1 &&
-                        Math.abs(totalScore) < 2.5
-        ) {
-
-            direction = "عرضي ↔";
-
-        } else if (
                 totalScore >= 3.0 &&
                         forecastReturn >=
                                 UP_THRESHOLD
@@ -423,33 +455,45 @@ public class PredictionEngine {
             direction = "صعود ↑";
 
         } else if (
-                totalScore <= -3.0 &&
-                        forecastReturn <=
-                                DOWN_THRESHOLD
+                forecastReturn <=
+                        DOWN_THRESHOLD &&
+                        confirmedDown
+        ) {
+
+            /*
+             * هبوط مؤكد فقط.
+             */
+
+            direction = "هبوط ↓";
+
+        } else if (
+                totalScore <= -4.0 &&
+                        confirmedDown
         ) {
 
             direction = "هبوط ↓";
 
         } else {
 
-            /*
-             * لو الاتجاه قوي لكن مقدار الحركة
-             * صغير، نسمح للدرجة المركبة
-             * بتحديد الاتجاه.
-             */
+            direction = "عرضي ↔";
+        }
 
-            if (totalScore >= 4.0) {
+        /*
+         * ==============================
+         * تصحيح إضافي للهبوط غير المؤكد
+         * ==============================
+         *
+         * لو الحساب أعطى حركة هابطة
+         * لكن لم يحصل التأكيد، نخفف
+         * السعر المتوقع بدل إعطاء هبوط قوي.
+         */
 
-                direction = "صعود ↑";
+        if (
+                !confirmedDown &&
+                        forecastReturn < 0
+        ) {
 
-            } else if (totalScore <= -4.0) {
-
-                direction = "هبوط ↓";
-
-            } else {
-
-                direction = "عرضي ↔";
-            }
+            forecastReturn *= 0.50;
         }
 
         /*
@@ -478,7 +522,8 @@ public class PredictionEngine {
                         bearishVotes,
                         voteDifference,
                         rsi,
-                        forecastReturn
+                        forecastReturn,
+                        confirmedDown
                 );
 
         return new PredictionResult(
@@ -491,7 +536,7 @@ public class PredictionEngine {
 
     /*
      * ==============================
-     * إشارة الزخم
+     * Momentum Signal
      * ==============================
      */
 
@@ -526,6 +571,7 @@ public class PredictionEngine {
             double ema10) {
 
         if (ema10 == 0) {
+
             return 0;
         }
 
@@ -670,6 +716,7 @@ public class PredictionEngine {
         if (averageLoss == 0) {
 
             if (averageGain == 0) {
+
                 return 50;
             }
 
@@ -717,6 +764,7 @@ public class PredictionEngine {
                 ).close;
 
         if (previous == 0) {
+
             return 0;
         }
 
@@ -738,12 +786,13 @@ public class PredictionEngine {
             int bearishVotes,
             int voteDifference,
             double rsi,
-            double forecastReturn) {
+            double forecastReturn,
+            boolean confirmedDown) {
 
         double confidence = 35;
 
         /*
-         * قوة الاتجاه.
+         * قوة الدرجة.
          */
 
         double scoreStrength =
@@ -774,7 +823,7 @@ public class PredictionEngine {
         }
 
         /*
-         * قوة الحركة المتوقعة.
+         * قوة الحركة.
          */
 
         double movement =
@@ -792,8 +841,16 @@ public class PredictionEngine {
         }
 
         /*
-         * RSI المتطرف يقلل الثقة قليلًا
-         * لأن احتمالية الانعكاس تزيد.
+         * تأكيد الهبوط.
+         */
+
+        if (confirmedDown) {
+
+            confidence += 5;
+        }
+
+        /*
+         * RSI متطرف.
          */
 
         if (
@@ -809,10 +866,12 @@ public class PredictionEngine {
          */
 
         if (confidence > 85) {
+
             confidence = 85;
         }
 
         if (confidence < 20) {
+
             confidence = 20;
         }
 
