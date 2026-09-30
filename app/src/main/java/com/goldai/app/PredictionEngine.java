@@ -60,8 +60,7 @@ public class PredictionEngine {
             );
         }
 
-        int currentIndex =
-                bars.size() - 1;
+        int currentIndex = bars.size() - 1;
 
         double currentScore =
                 calculateScore(
@@ -184,9 +183,6 @@ public class PredictionEngine {
         /*
          * =====================================================
          * توقع العائد
-         *
-         * نحتفظ بنفس طريقة Probability Ensemble
-         * لحساب السعر المتوقع.
          * =====================================================
          */
 
@@ -197,14 +193,8 @@ public class PredictionEngine {
                 );
 
         if (historicalStates.isEmpty()) {
-
-            expectedReturn =
-                    0;
+            expectedReturn = 0;
         }
-
-        /*
-         * تقليل المبالغة
-         */
 
         expectedReturn *= 0.65;
 
@@ -287,8 +277,6 @@ public class PredictionEngine {
         /*
          * =====================================================
          * تحديد الاتجاه
-         *
-         * هنا التغيير الأساسي.
          * =====================================================
          */
 
@@ -328,7 +316,6 @@ public class PredictionEngine {
          */
 
         if (direction.equals("محايد")) {
-
             expectedReturn *= 0.45;
         }
 
@@ -369,10 +356,6 @@ public class PredictionEngine {
                         + voteStrength * 12.0
                         + movementStrength * 8.0;
 
-        /*
-         * RSI extreme يعطي بعض الدعم للثقة
-         */
-
         double rsi =
                 calculateRSI(
                         bars,
@@ -397,6 +380,49 @@ public class PredictionEngine {
                 direction,
                 confidence
         );
+    }
+
+    /*
+     * =========================================================
+     * Ensemble Score
+     *
+     * هذه الدالة كانت ناقصة في النسخة السابقة.
+     * وهي تجمع نفس مكونات Ensemble المستخدمة في التحليل الحالي.
+     * =========================================================
+     */
+
+    private double calculateScore(
+            List<HistoricalGoldProvider.GoldBar> bars,
+            int index) {
+
+        double trendScore =
+                calculateTrendScore(
+                        bars,
+                        index
+                );
+
+        double positionScore =
+                calculatePositionScore(
+                        bars,
+                        index
+                );
+
+        double momentumScore =
+                calculateMomentumScore(
+                        bars,
+                        index
+                );
+
+        double rsiScore =
+                calculateRsiScore(
+                        bars,
+                        index
+                );
+
+        return trendScore
+                + positionScore
+                + momentumScore
+                + rsiScore;
     }
 
     /*
