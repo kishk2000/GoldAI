@@ -14,16 +14,29 @@ public class BacktestEngine {
     public BacktestResult run(List<HistoricalGoldProvider.GoldBar> bars) {
 
         if (bars == null || bars.size() < 16) {
-            return new BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, "بيانات غير كافية لإجراء الاختبار التاريخي");
+            return new BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, "بيانات غير كافية لإجراء الاختبار التاريخي (المطلوب 16 شمعة على الأقل)");
         }
 
-        List<HistoricalGoldProvider.GoldBar> chronological = new ArrayList<>(bars);
+        List<HistoricalGoldProvider.GoldBar> chronological = new ArrayList<>();
+        for (HistoricalGoldProvider.GoldBar bar : bars) {
+            if (bar != null && bar.close > 0) {
+                chronological.add(bar);
+            }
+        }
 
-        // الترتيب باستخدام date لتوافق الكلاس الموجود في HistoricalGoldProvider
-        Collections.sort(chronological, (a, b) -> {
-            if (a.date == null || b.date == null) return 0;
-            return a.date.compareTo(b.date);
-        });
+        if (chronological.size() < 16) {
+            return new BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, "الشموع الصالحة غير كافية للاختبار");
+        }
+
+        // ترنيب آمن بدون الاستناد الحصري لـ compareTo المباشرة لمنع NullPointerException
+        try {
+            Collections.sort(chronological, (a, b) -> {
+                if (a.date == null && b.date == null) return 0;
+                if (a.date == null) return -1;
+                if (b.date == null) return 1;
+                return a.date.compareTo(b.date);
+            });
+        } catch (Exception ignored) {}
 
         int totalTests = 0;
         int correctTests = 0;
@@ -60,7 +73,7 @@ public class BacktestEngine {
             HistoricalGoldProvider.GoldBar currentBar = chronological.get(i);
             HistoricalGoldProvider.GoldBar nextBar = chronological.get(i + 1);
 
-            if (currentBar == null || nextBar == null) continue;
+            if (currentBar == null || nextBar == null || currentBar.close <= 0 || nextBar.close <= 0) continue;
 
             double currentPrice = currentBar.close;
             double actualNextPrice = nextBar.close;
@@ -76,7 +89,7 @@ public class BacktestEngine {
                 continue;
             }
 
-            double actualChangePercent = currentPrice != 0 ? ((actualNextPrice - currentPrice) / currentPrice) * 100.0 : 0;
+            double actualChangePercent = ((actualNextPrice - currentPrice) / currentPrice) * 100.0;
 
             boolean actualUp = actualChangePercent >= 0.30;
             boolean actualDown = actualChangePercent <= -0.30;
@@ -108,7 +121,7 @@ public class BacktestEngine {
             else if (predictedDown) predictedDownCount++;
             else predictedSidewaysCount++;
 
-            double forecastChangePercent = currentPrice != 0 ? ((result.predictedPrice - currentPrice) / currentPrice) * 100.0 : 0;
+            double forecastChangePercent = ((result.predictedPrice - currentPrice) / currentPrice) * 100.0;
             double signalStrength = Math.abs(forecastChangePercent);
 
             String signalLevel;
@@ -161,20 +174,23 @@ public class BacktestEngine {
             double momentum3 = calculateMomentum(training, 3) * 100.0;
             double momentum5 = calculateMomentum(training, 5) * 100.0;
 
+            String currentDateStr = currentBar.date != null ? currentBar.date : "يوم " + i;
+            String nextDateStr = nextBar.date != null ? nextBar.date : "يوم " + (i + 1);
+
             report.append(String.format(Locale.US,
-                    "اختبار %d\nالتاريخ: %s → %s\nالسعر الحالي: $%.2f\nالسعر المتوقع: $%.2f\nالسعر الفعلي: $%.2f\n" +
+                    "اختبار %d\nالتاريخ: %s ← %s\nالسعر الحالي: $%.2f\nالسعر المتوقع: $%.2f\nالسعر الفعلي: $%.2f\n" +
                     "الاتجاه المتوقع: %s\nالاتجاه الفعلي: %s\nالتغير الفعلي: %.2f%%\nالتغير المتوقع: %.2f%%\n" +
                     "قوة الإشارة: %.2f%% (%s)\nRSI: %.1f\nEMA5: $%.2f\nEMA10: $%.2f\nEMA20: $%.2f\n" +
                     "Momentum 1D: %.2f%%\nMomentum 3D: %.2f%%\nMomentum 5D: %.2f%%\nخطأ السعر: $%.2f\nالثقة: %.0f%%\n" +
                     "النتيجة: %s\n-------------------------\n",
-                    totalTests, currentBar.date, nextBar.date, currentPrice, result.predictedPrice, actualNextPrice,
+                    totalTests, currentDateStr, nextDateStr, currentPrice, result.predictedPrice, actualNextPrice,
                     result.direction, actualDirection, actualChangePercent, forecastChangePercent, signalStrength,
                     signalLevel, rsi, ema5, ema10, ema20, momentum1, momentum3, momentum5, absoluteError,
                     result.confidence, predictionResultStr));
         }
 
         if (totalTests == 0) {
-            return new BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, report.toString());
+            return new BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, "لم يتم استخراج اختبارات كافية مطابقة للشروط");
         }
 
         double directionAccuracy = (correctTests * 100.0) / totalTests;
@@ -215,7 +231,7 @@ public class BacktestEngine {
         String diagnosticReport = String.format(Locale.US,
                 "🧠 تشخيص انحياز المحرك\n\nمتوسط التغير المتوقع: %.2f%%\nمتوسط التغير الفعلي: %.2f%%\nانحياز التوقع: %.2f نقطة مئوية\n\n" +
                 "⬆️ عند توقع الصعود:\nعدد الاختبارات: %d\nمتوسط التغير المتوقع: %.2f%%\nمتوسط التغير الفعلي: %.2f%%\nمتوسط خطأ السعر: $%.2f\nدقة توقع الصعود: %.1f%%\n\n" +
-                "⬇️️ عند توقع الهبوط:\nعدد الاختبارات: %d\nمتوسط التغير المتوقع: %.2f%%\nمتوسط التغير الفعلي: %.2f%%\nمتوسط خطأ السعر: $%.2f\nدقة توقع الهبوط: %.1f%%\n\n" +
+                "⬇ عند توقع الهبوط:\nعدد الاختبارات: %d\nمتوسط التغير المتوقع: %.2f%%\nمتوسط التغير الفعلي: %.2f%%\nمتوسط خطأ السعر: $%.2f\nدقة توقع الهبوط: %.1f%%\n\n" +
                 "↔️ عند توقع العرضي:\nعدد الاختبارات: %d\nمتوسط التغير المتوقع: %.2f%%\nمتوسط التغير الفعلي: %.2f%%\nمتوسط خطأ السعر: $%.2f\nدقة التوقع العرضي: %.1f%%\n\n",
                 averageForecastChange, averageActualChange, forecastBias,
                 upTests, averageUpForecast, averageUpActual, averageUpError, upAccuracy,
@@ -224,7 +240,7 @@ public class BacktestEngine {
 
         String summary = String.format(Locale.US,
                 "📊 ملخص الاختبار التاريخي\n\nإجمالي الاختبارات: %d\nالتوقعات الصحيحة: %d\nالتوقعات الخاطئة: %d\nدقة الاتجاه: %.1f%%\nمتوسط خطأ السعر: $%.2f\n\n" +
-                "⬆️ الصعود:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n⬇️️ الهبوط:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n↔ العرضي:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n" +
+                "⬆️ الصعود:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n⬇ الهبوط:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n↔ العرضي:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n" +
                 "📈 الدقة حسب قوة الإشارة:\n\nضعيفة (<0.30%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\nمتوسطة (0.30%%–1.00%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\nقوية (≥1.00%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n=========================\n\n",
                 totalTests, correctTests, totalTests - correctTests, directionAccuracy, averageAbsoluteError,
                 predictedUpCount, correctUpCount, upAccuracy, predictedDownCount, correctDownCount, downAccuracy,
