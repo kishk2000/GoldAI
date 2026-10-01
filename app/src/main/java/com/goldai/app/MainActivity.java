@@ -5,9 +5,10 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.goldai.app.R;
 import com.goldai.app.data.HistoricalGoldProvider;
 import com.goldai.app.data.MarketData;
-import com.goldai.app.data.MarketDataEngine;
+import com.goldai.app.data.MarketDataService;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -29,7 +30,7 @@ public class MainActivity extends Activity {
     private TextView backtest;
     private TextView status;
 
-    private MarketDataEngine dataEngine;
+    private MarketDataService dataEngine;
     private HistoricalGoldProvider historyProvider;
     private PredictionEngine predictionEngine;
     private BacktestEngine backtestEngine;
@@ -50,7 +51,7 @@ public class MainActivity extends Activity {
 
         loadHistoryOnce();
 
-        dataEngine = new MarketDataEngine(new MarketDataEngine.DataCallback() {
+        dataEngine = new MarketDataService(new MarketDataService.DataCallback() {
             @Override
             public void onDataUpdated(MarketData data) {
                 runOnUiThread(() -> {
@@ -92,7 +93,6 @@ public class MainActivity extends Activity {
         priceUsd.setText(String.format(Locale.US, "$%.2f", data.goldUsd));
         egpUsd.setText(String.format(Locale.US, "الدولار: %.3f جنيه", data.usdEgp));
 
-        // توافق مع حقول MarketData
         double g24 = data.gold24 > 0 ? data.gold24 : data.goldUsd * data.usdEgp / 31.1035;
         double g21 = data.gold21 > 0 ? data.gold21 : g24 * 0.875;
         double g18 = data.gold18 > 0 ? data.gold18 : g24 * 0.750;
