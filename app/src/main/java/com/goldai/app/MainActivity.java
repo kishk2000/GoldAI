@@ -5,6 +5,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
+// استيراد صريح لملف الموارد R لتفادي تعارض الـ Package
+import com.goldai.app.R;
+
 import com.goldai.app.data.HistoricalGoldProvider;
 import com.goldai.app.data.MarketData;
 
