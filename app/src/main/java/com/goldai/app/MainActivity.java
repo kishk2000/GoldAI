@@ -1,10 +1,9 @@
 package com.goldai.app;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
-
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.goldai.app.data.HistoricalGoldProvider;
 import com.goldai.app.data.MarketData;
@@ -15,7 +14,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private static final String TAG = "MainActivity";
 
@@ -60,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
                     if (historyLoaded && historicalBars != null && !historicalBars.isEmpty()) {
                         runPrediction(data);
                     } else {
-                        status.setText("⏳ جاري انتظار كتمال البيانات التاريخية...");
+                        status.setText("⏳ جاري انتظار اكتمال البيانات التاريخية...");
                     }
                 });
             }
@@ -92,9 +91,15 @@ public class MainActivity extends AppCompatActivity {
 
         priceUsd.setText(String.format(Locale.US, "$%.2f", data.goldUsd));
         egpUsd.setText(String.format(Locale.US, "الدولار: %.3f جنيه", data.usdEgp));
-        egp24.setText(String.format(Locale.US, "عيار 24  %.0f جنيه", data.gold24Egp));
-        egp21.setText(String.format(Locale.US, "عيار 21  %.0f جنيه", data.gold21Egp));
-        egp18.setText(String.format(Locale.US, "عيار 18  %.0f جنيه", data.gold18Egp));
+
+        // توافق مع حقول MarketData
+        double g24 = data.gold24 > 0 ? data.gold24 : data.goldUsd * data.usdEgp / 31.1035;
+        double g21 = data.gold21 > 0 ? data.gold21 : g24 * 0.875;
+        double g18 = data.gold18 > 0 ? data.gold18 : g24 * 0.750;
+
+        egp24.setText(String.format(Locale.US, "عيار 24  %.0f جنيه", g24));
+        egp21.setText(String.format(Locale.US, "عيار 21  %.0f جنيه", g21));
+        egp18.setText(String.format(Locale.US, "عيار 18  %.0f جنيه", g18));
     }
 
     private void loadHistoryOnce() {
@@ -147,7 +152,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            // 1. حساب وتحليل التوقع الرئيسي
             PredictionEngine.PredictionResult result = predictionEngine.analyze(currentData.goldUsd, historicalBars);
 
             if (result != null) {
@@ -158,7 +162,6 @@ public class MainActivity extends AppCompatActivity {
                 confidence.setText(String.format(Locale.US, "الثقة التحليلية: %d%%", result.confidence));
             }
 
-            // 2. تشغيل الـ Backtest بشكل مستقل لتفادي انهيار التطبيق
             try {
                 BacktestEngine.BacktestResult testResult = backtestEngine.run(historicalBars);
                 if (testResult != null && testResult.totalTests > 0) {
