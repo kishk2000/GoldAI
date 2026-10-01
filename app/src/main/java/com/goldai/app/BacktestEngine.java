@@ -19,11 +19,7 @@ public class BacktestEngine {
 
         List<HistoricalGoldProvider.GoldBar> chronological = new ArrayList<>(bars);
 
-        // ترتيب البيانات زمنياً من القديم إلى الحديث
-        Collections.sort(chronological, (a, b) -> {
-            if (a == null || a.date == null || b == null || b.date == null) return 0;
-            return a.date.compareTo(b.date);
-        });
+        Collections.sort(chronological, (a, b) -> Long.compare(a.timestamp, b.timestamp));
 
         int totalTests = 0;
         int correctTests = 0;
@@ -72,7 +68,6 @@ public class BacktestEngine {
                 continue;
             }
 
-            // فحص آمن لمنع NullPointerException
             if (result == null || result.direction == null || result.direction.contains("غير كافية")) {
                 continue;
             }
@@ -225,7 +220,7 @@ public class BacktestEngine {
 
         String summary = String.format(Locale.US,
                 "📊 ملخص الاختبار التاريخي\n\nإجمالي الاختبارات: %d\nالتوقعات الصحيحة: %d\nالتوقعات الخاطئة: %d\nدقة الاتجاه: %.1f%%\nمتوسط خطأ السعر: $%.2f\n\n" +
-                "⬆️ الصعود:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n⬇️ الهبوط:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n↔️ العرضي:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n" +
+                "⬆️ الصعود:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n⬇️ الهبوط:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n↔️️ العرضي:\nالتوقعات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n" +
                 "📈 الدقة حسب قوة الإشارة:\n\nضعيفة (<0.30%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\nمتوسطة (0.30%%–1.00%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\nقوية (≥1.00%%):\nالاختبارات: %d\nالصحيحة: %d\nالدقة: %.1f%%\n\n=========================\n\n",
                 totalTests, correctTests, totalTests - correctTests, directionAccuracy, averageAbsoluteError,
                 predictedUpCount, correctUpCount, upAccuracy, predictedDownCount, correctDownCount, downAccuracy,
