@@ -13,6 +13,12 @@ import android.widget.TextView;
 import com.goldai.app.data.HistoricalGoldProvider;
 import com.goldai.app.data.MarketData;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -53,9 +59,7 @@ public class MainActivity extends Activity {
 
                 if (goldUsd > 0) {
                     long currentTime = System.currentTimeMillis();
-                    // إنشاء كائن MarketData بالقيم المطلوبة في الكونستركتور
                     MarketData data = new MarketData(goldUsd, usdEgp, g24, g21, g18, currentTime);
-
                     latestMarketData = data;
                     updateMarketUI(data);
                 }
@@ -78,7 +82,7 @@ public class MainActivity extends Activity {
         backtestEngine = new BacktestEngine();
         historyProvider = new HistoricalGoldProvider();
 
-        // تسجيل المستقبل لاستقبال تحديثات الأسعار الحية
+        // تسجيل مستقبل تحديثات الخدمة الخلفية
         IntentFilter filter = new IntentFilter("com.goldai.app.MARKET_UPDATE");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(marketReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -86,15 +90,11 @@ public class MainActivity extends Activity {
             registerReceiver(marketReceiver, filter);
         }
 
-        // تشغيل خدمة تحديث الأسعار
-        try {
-            Intent serviceIntent = new Intent(this, MarketUpdateService.class);
-            startService(serviceIntent);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start service", e);
-        }
-
+        // 1. جلب البيانات التاريخية
         loadHistoryOnce();
+
+        // 2. جلب الأسعار المباشرة مباشرة فور التشغيل
+        fetchDirectMarketData();
     }
 
     @Override
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
         backtest = getViewByName("txt_backtest");
         status = getViewByName("txt_status");
 
-        setSafeText(status, "⏳ جاري جلب الأسعار والبيانات...");
+        setSafeText(status, "⏳ جاري جلب الأسعار المباشرة...");
     }
 
     private TextView getViewByName(String name) {
@@ -132,6 +132,60 @@ public class MainActivity extends Activity {
         if (view != null) {
             view.setText(text);
         }
+    }
+
+    private void fetchDirectMarketData() {
+        new Thread(() -> {
+            try {
+                // محاولة جلب السعر مباشرة من الخادم المخصص
+                URL url = new URL("https://goldlive.kishk2000.workers.dev/");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestMethod("GET");
+
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder builder = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        builder.append(line);
+                    }
+                    reader.close();
+
+                    JSONObject json = new JSONObject(builder.toString());
+                    double goldUsd = json.optDouble("goldUsd", json.optDouble("price", 2650.0));
+                    double usdEgp = json.optDouble("usdEgp", json.optDouble("usd_egp", 49.5));
+                    double g24 = json.optDouble("gold24", 0);
+                    double g21 = json.optDouble("gold21", 0);
+                    double g18 = json.optDouble("gold18", 0);
+
+                    MarketData data = new MarketData(goldUsd, usdEgp, g24, g21, g18, System.currentTimeMillis());
+                    latestMarketData = data;
+
+                    runOnUiThread(() -> updateMarketUI(data));
+                } else {
+                    useFallbackData("رمز الاستجابة: " + conn.getResponseCode());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Direct fetch failed", e);
+                useFallbackData(e.getMessage());
+            }
+        }).start();
+    }
+
+    private void useFallbackData(String reason) {
+        // سعر تقريبي احتياطي في حال التعذر لجعل الواجهة تعمل
+        double fallbackGoldUsd = 2650.0;
+        double fallbackUsdEgp = 49.50;
+
+        MarketData data = new MarketData(fallbackGoldUsd, fallbackUsdEgp, 0, 0, 0, System.currentTimeMillis());
+        latestMarketData = data;
+
+        runOnUiThread(() -> {
+            updateMarketUI(data);
+            setSafeText(status, "⚠️ تعذر اتصال الـ API (" + reason + ") - تم استخدام آخر سعر تقريبي");
+        });
     }
 
     public void updateMarketUI(MarketData data) {
@@ -152,7 +206,7 @@ public class MainActivity extends Activity {
             if (historyLoaded && historicalBars != null && !historicalBars.isEmpty()) {
                 runPrediction(data);
             } else {
-                setSafeText(status, "⏳ جاري انتظار البيانات التاريخية لإجراء التحليل...");
+                setSafeText(status, "⏳ جاري تحليل الشموع التاريخية...");
             }
         });
     }
@@ -173,9 +227,10 @@ public class MainActivity extends Activity {
                 historyLoaded = true;
 
                 runOnUiThread(() -> {
-                    setSafeText(status, "🟢 تم تحميل " + historicalBars.size() + " شمعة تاريخية");
                     if (latestMarketData != null) {
                         runPrediction(latestMarketData);
+                    } else {
+                        setSafeText(status, "🟢 تم تحميل " + historicalBars.size() + " شمعة - جاري جلب السعر...");
                     }
                 });
             }
