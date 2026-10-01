@@ -52,12 +52,9 @@ public class MainActivity extends Activity {
                 double g18 = intent.getDoubleExtra("gold18", 0);
 
                 if (goldUsd > 0) {
-                    MarketData data = new MarketData();
-                    data.goldUsd = goldUsd;
-                    data.usdEgp = usdEgp;
-                    data.gold24 = g24;
-                    data.gold21 = g21;
-                    data.gold18 = g18;
+                    long currentTime = System.currentTimeMillis();
+                    // إنشاء كائن MarketData بالقيم المطلوبة في الكونستركتور
+                    MarketData data = new MarketData(goldUsd, usdEgp, g24, g21, g18, currentTime);
 
                     latestMarketData = data;
                     updateMarketUI(data);
