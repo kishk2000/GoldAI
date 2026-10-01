@@ -1,11 +1,15 @@
 package com.goldai.app;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
-import com.goldai.app.R;
 import com.goldai.app.data.HistoricalGoldProvider;
 import com.goldai.app.data.MarketData;
 
@@ -35,11 +39,41 @@ public class MainActivity extends Activity {
 
     private List<HistoricalGoldProvider.GoldBar> historicalBars;
     private boolean historyLoaded = false;
+    private MarketData latestMarketData;
+
+    private final BroadcastReceiver marketReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && "com.goldai.app.MARKET_UPDATE".equals(intent.getAction())) {
+                double goldUsd = intent.getDoubleExtra("goldUsd", 0);
+                double usdEgp = intent.getDoubleExtra("usdEgp", 0);
+                double g24 = intent.getDoubleExtra("gold24", 0);
+                double g21 = intent.getDoubleExtra("gold21", 0);
+                double g18 = intent.getDoubleExtra("gold18", 0);
+
+                if (goldUsd > 0) {
+                    MarketData data = new MarketData();
+                    data.goldUsd = goldUsd;
+                    data.usdEgp = usdEgp;
+                    data.gold24 = g24;
+                    data.gold21 = g21;
+                    data.gold18 = g18;
+
+                    latestMarketData = data;
+                    updateMarketUI(data);
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+
+        int layoutId = getResources().getIdentifier("activity_main", "layout", getPackageName());
+        if (layoutId != 0) {
+            setContentView(layoutId);
+        }
 
         initViews();
 
@@ -47,41 +81,81 @@ public class MainActivity extends Activity {
         backtestEngine = new BacktestEngine();
         historyProvider = new HistoricalGoldProvider();
 
+        // تسجيل المستقبل لاستقبال تحديثات الأسعار الحية
+        IntentFilter filter = new IntentFilter("com.goldai.app.MARKET_UPDATE");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(marketReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(marketReceiver, filter);
+        }
+
+        // تشغيل خدمة تحديث الأسعار
+        try {
+            Intent serviceIntent = new Intent(this, MarketUpdateService.class);
+            startService(serviceIntent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start service", e);
+        }
+
         loadHistoryOnce();
     }
 
-    private void initViews() {
-        priceUsd = findViewById(R.id.txt_price_usd);
-        egpUsd = findViewById(R.id.txt_egp_usd);
-        egp24 = findViewById(R.id.txt_egp_24);
-        egp21 = findViewById(R.id.txt_egp_21);
-        egp18 = findViewById(R.id.txt_egp_18);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            unregisterReceiver(marketReceiver);
+        } catch (Exception ignored) {}
+    }
 
-        prediction = findViewById(R.id.txt_prediction);
-        confidence = findViewById(R.id.txt_confidence);
-        backtest = findViewById(R.id.txt_backtest);
-        status = findViewById(R.id.txt_status);
+    private void initViews() {
+        priceUsd = getViewByName("txt_price_usd");
+        egpUsd = getViewByName("txt_egp_usd");
+        egp24 = getViewByName("txt_egp_24");
+        egp21 = getViewByName("txt_egp_21");
+        egp18 = getViewByName("txt_egp_18");
+
+        prediction = getViewByName("txt_prediction");
+        confidence = getViewByName("txt_confidence");
+        backtest = getViewByName("txt_backtest");
+        status = getViewByName("txt_status");
+
+        setSafeText(status, "⏳ جاري جلب الأسعار والبيانات...");
+    }
+
+    private TextView getViewByName(String name) {
+        int resId = getResources().getIdentifier(name, "id", getPackageName());
+        if (resId != 0) {
+            return findViewById(resId);
+        }
+        return null;
+    }
+
+    private void setSafeText(TextView view, String text) {
+        if (view != null) {
+            view.setText(text);
+        }
     }
 
     public void updateMarketUI(MarketData data) {
         if (data == null) return;
 
         runOnUiThread(() -> {
-            priceUsd.setText(String.format(Locale.US, "$%.2f", data.goldUsd));
-            egpUsd.setText(String.format(Locale.US, "الدولار: %.3f جنيه", data.usdEgp));
+            setSafeText(priceUsd, String.format(Locale.US, "سعر الأونصة: $%.2f", data.goldUsd));
+            setSafeText(egpUsd, String.format(Locale.US, "الدولار: %.2f جنيه", data.usdEgp));
 
-            double g24 = data.gold24 > 0 ? data.gold24 : data.goldUsd * data.usdEgp / 31.1035;
-            double g21 = data.gold21 > 0 ? data.gold21 : g24 * 0.875;
-            double g18 = data.gold18 > 0 ? data.gold18 : g24 * 0.750;
+            double g24 = data.gold24 > 0 ? data.gold24 : (data.goldUsd * data.usdEgp / 31.1035);
+            double g21 = data.gold21 > 0 ? data.gold21 : (g24 * 0.875);
+            double g18 = data.gold18 > 0 ? data.gold18 : (g24 * 0.750);
 
-            egp24.setText(String.format(Locale.US, "عيار 24  %.0f جنيه", g24));
-            egp21.setText(String.format(Locale.US, "عيار 21  %.0f جنيه", g21));
-            egp18.setText(String.format(Locale.US, "عيار 18  %.0f جنيه", g18));
+            setSafeText(egp24, String.format(Locale.US, "عيار 24:  %.0f جنيه", g24));
+            setSafeText(egp21, String.format(Locale.US, "عيار 21:  %.0f جنيه", g21));
+            setSafeText(egp18, String.format(Locale.US, "عيار 18:  %.0f جنيه", g18));
 
             if (historyLoaded && historicalBars != null && !historicalBars.isEmpty()) {
                 runPrediction(data);
             } else {
-                status.setText("⏳ جاري انتظار اكتمال البيانات التاريخية...");
+                setSafeText(status, "⏳ جاري انتظار البيانات التاريخية لإجراء التحليل...");
             }
         });
     }
@@ -93,7 +167,7 @@ public class MainActivity extends Activity {
                 if (bars == null || bars.isEmpty()) {
                     runOnUiThread(() -> {
                         historyLoaded = false;
-                        status.setText("🟡 القائمة التاريخية فارغة");
+                        setSafeText(status, "🟡 القائمة التاريخية فارغة");
                     });
                     return;
                 }
@@ -102,7 +176,10 @@ public class MainActivity extends Activity {
                 historyLoaded = true;
 
                 runOnUiThread(() -> {
-                    status.setText("🟢 تم تحميل " + historicalBars.size() + " شمعة تاريخية");
+                    setSafeText(status, "🟢 تم تحميل " + historicalBars.size() + " شمعة تاريخية");
+                    if (latestMarketData != null) {
+                        runPrediction(latestMarketData);
+                    }
                 });
             }
 
@@ -110,10 +187,10 @@ public class MainActivity extends Activity {
             public void onError(String error) {
                 runOnUiThread(() -> {
                     historyLoaded = false;
-                    prediction.setText("تعذر تحميل البيانات التاريخية");
-                    confidence.setText("الثقة التحليلية: --");
-                    backtest.setText("📊 الاختبار التاريخي\nغير متاح حاليًا");
-                    status.setText("🔴 خطأ تاريخي: " + (error != null ? error : "فشل غير معروف"));
+                    setSafeText(prediction, "تعذر تحميل البيانات التاريخية");
+                    setSafeText(confidence, "الثقة التحليلية: --");
+                    setSafeText(backtest, "📊 الاختبار التاريخي\nغير متاح حاليًا");
+                    setSafeText(status, "🔴 خطأ تاريخي: " + (error != null ? error : "فشل غير معروف"));
                 });
             }
         });
@@ -121,14 +198,14 @@ public class MainActivity extends Activity {
 
     private void runPrediction(MarketData currentData) {
         if (currentData == null) {
-            status.setText("🔴 لا توجد بيانات سعر حالي");
+            setSafeText(status, "🔴 لا توجد بيانات سعر حالي");
             return;
         }
 
         if (historicalBars == null || historicalBars.size() < 15) {
-            prediction.setText("بيانات تاريخية غير كافية (الحد الأدنى 15 يوم)");
-            confidence.setText("الثقة التحليلية: --");
-            backtest.setText("📊 الاختبار التاريخي\nغير متاح - البيانات قليلة");
+            setSafeText(prediction, "بيانات تاريخية غير كافية (الحد الأدنى 15 يوم)");
+            setSafeText(confidence, "الثقة التحليلية: --");
+            setSafeText(backtest, "📊 الاختبار التاريخي\nغير متاح - البيانات قليلة");
             return;
         }
 
@@ -136,11 +213,11 @@ public class MainActivity extends Activity {
             PredictionEngine.PredictionResult result = predictionEngine.analyze(currentData.goldUsd, historicalBars);
 
             if (result != null) {
-                prediction.setText(String.format(Locale.US,
-                        "الاتجاه: %s\nالسعر المتوقع: $%.2f\nالبيانات: %d يوم",
-                        result.direction, result.predictedPrice, historicalBars.size()));
+                setSafeText(prediction, String.format(Locale.US,
+                        "الاتجاه المتوقع: %s\nالسعر المتوقع: $%.2f",
+                        result.direction, result.predictedPrice));
 
-                confidence.setText(String.format(Locale.US, "الثقة التحليلية: %d%%", result.confidence));
+                setSafeText(confidence, String.format(Locale.US, "نسبة الثقة: %d%%", result.confidence));
             }
 
             try {
@@ -157,21 +234,21 @@ public class MainActivity extends Activity {
                     if (testResult.detailedReport != null) {
                         display.append(testResult.detailedReport);
                     }
-                    backtest.setText(display.toString());
+                    setSafeText(backtest, display.toString());
                 } else {
-                    backtest.setText("📊 الاختبار التاريخي\nبيانات غير كافية للاختبار");
+                    setSafeText(backtest, "📊 الاختبار التاريخي\nبيانات غير كافية للاختبار");
                 }
             } catch (Exception eBacktest) {
                 Log.e(TAG, "Backtest error: ", eBacktest);
-                backtest.setText("📊 الاختبار التاريخي\nتعذر الحساب لهذا النطاق");
+                setSafeText(backtest, "📊 الاختبار التاريخي\nتعذر الحساب لهذا النطاق");
             }
 
             String updateTime = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-            status.setText("🟢 تم التحديث بنجاح: " + updateTime);
+            setSafeText(status, "🟢 تم التحديث بنجاح: " + updateTime);
 
         } catch (Exception e) {
             Log.e(TAG, "Prediction execution failed: ", e);
-            status.setText("🔴 خطأ المعالجة: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            setSafeText(status, "🔴 خطأ المعالجة: " + e.getClass().getSimpleName() + " - " + e.getMessage());
         }
     }
 }
